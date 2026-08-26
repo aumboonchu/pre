@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'Inter', 'Noto Sans Thai', system-ui, sans-serif;
+  color: #1e1e1e;
+  background: #0f1012;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --orange: #f57c00;
+  --orange-dark: #dd6800;
+  --green: #2e7d32;
+  --red: #c62828;
+  --ink: #141518;
+  --muted: #6f7379;
+  --line: #e5e7eb;
+  --soft: #f5f6f7;
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; background: #0f1012; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f5f6f7; }
+button, input { font: inherit; }
+button, label.button { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible { outline: 3px solid rgba(245, 124, 0, .28); outline-offset: 2px; }
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+#root { min-height: 100vh; }
