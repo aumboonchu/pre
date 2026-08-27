@@ -66,7 +66,7 @@ interface AppStoreValue {
   uploadReceipt: (reservationId: string, receipt: Receipt) => Promise<void>
   approve: (reservationId: string) => Promise<void>
   reject: (reservationId: string) => Promise<void>
-  changeBranchPassword: (branchId: string, current: string, next: string) => Promise<boolean>
+  changePassword: (current: string, next: string) => Promise<boolean>
   resetBranchPassword: (branchId: string) => Promise<void>
   upsertProduct: (product: Product) => Promise<void>
   importProducts: (products: Product[]) => Promise<void>
@@ -316,8 +316,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [atomic, refreshRemote],
   )
 
-  const changeBranchPassword = useCallback(
-    async (branchId: string, current: string, next: string) => {
+  const changePassword = useCallback(
+    async (current: string, next: string) => {
       if (REMOTE_MODE) {
         try {
           await api.changePassword(current, next)
@@ -327,15 +327,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           throw error
         }
       }
-      const branch = stateRef.current.branches.find((item) => item.id === branchId)
+
+      if (session?.role === 'admin') {
+        if (stateRef.current.admin.password !== current) return false
+        commit({ ...stateRef.current, admin: { ...stateRef.current.admin, password: next } })
+        return true
+      }
+
+      if (session?.role !== 'branch') return false
+      const branch = stateRef.current.branches.find((item) => item.id === session.branchId)
       if (!branch || branch.password !== current) return false
-      commit({
-        ...stateRef.current,
-        branches: stateRef.current.branches.map((item) => item.id === branchId ? { ...item, password: next } : item),
-      })
+      commit({ ...stateRef.current, branches: stateRef.current.branches.map((item) => item.id === branch.id ? { ...item, password: next } : item) })
       return true
     },
-    [commit],
+    [commit, session],
   )
 
   const resetBranchPassword = useCallback(
@@ -450,12 +455,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppStoreValue>(
     () => ({
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
-      approve, reject, changeBranchPassword, resetBranchPassword, upsertProduct,
+      approve, reject, changePassword, resetBranchPassword, upsertProduct,
       importProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
     }),
     [
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
-      approve, reject, changeBranchPassword, resetBranchPassword, upsertProduct,
+      approve, reject, changePassword, resetBranchPassword, upsertProduct,
       importProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
     ],
   )

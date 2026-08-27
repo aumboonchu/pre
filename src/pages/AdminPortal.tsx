@@ -7,7 +7,7 @@ import { cleanProductName, currency, dateTime } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
 import type { BranchUser, Product, ReservationStatus } from '../types'
 
-type AdminTab = 'overview' | 'reservations' | 'products' | 'users'
+type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'password'
 
 function ProductEditor({ product, onClose, onSaved }: { product?: Product; onClose: () => void; onSaved: () => void }) {
   const { upsertProduct } = useAppStore()
@@ -109,6 +109,7 @@ export function AdminPortal() {
     importBranches,
     resetBranchPassword,
     setBookingOpen,
+    changePassword,
   } = useAppStore()
   const { toast, showToast } = useToast()
   const [tab, setTab] = useState<AdminTab>('overview')
@@ -117,6 +118,9 @@ export function AdminPortal() {
   const [branchQuery, setBranchQuery] = useState('')
   const [editingProduct, setEditingProduct] = useState<Product | 'new' | null>(null)
   const [editingBranch, setEditingBranch] = useState<BranchUser | 'new' | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   if (session?.role !== 'admin') return <Navigate to="/login" replace />
 
@@ -199,6 +203,23 @@ export function AdminPortal() {
     }
   }
 
+  const handlePassword = async (event: FormEvent) => {
+    event.preventDefault()
+    if (newPassword.length < 4) return showToast('รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร', 'error')
+    if (newPassword !== confirmPassword) return showToast('ยืนยันรหัสผ่านไม่ตรงกัน', 'error')
+    try {
+      if (!(await changePassword(currentPassword, newPassword))) {
+        return showToast('รหัสผ่านปัจจุบันไม่ถูกต้อง', 'error')
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      showToast('เปลี่ยนรหัสผ่าน Admin เรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'error')
+    }
+  }
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -209,6 +230,7 @@ export function AdminPortal() {
           <button className={tab === 'reservations' ? 'active' : ''} onClick={() => setTab('reservations')}><span>✓</span> ตรวจสอบการจอง <b>{waiting}</b></button>
           <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><span>□</span> สินค้าและ Stock</button>
           <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}><span>♙</span> ผู้ใช้สาขา</button>
+          <button className={tab === 'password' ? 'active' : ''} onClick={() => setTab('password')}><span>⌘</span> เปลี่ยน Password</button>
         </nav>
         <div className="admin-sidebar__safety"><strong>Stock-safe mode</strong><span>Atomic transaction</span><span>Idempotency key</span><span>72h stock restore</span></div>
         <button className="sidebar-logout" onClick={logout} type="button">ออกจากระบบ</button>
@@ -216,7 +238,7 @@ export function AdminPortal() {
 
       <div className="admin-main">
         <header className="admin-topbar">
-          <div><span className="eyebrow eyebrow--orange">HQ / OPERATIONS PORTAL</span><h1>{tab === 'overview' ? 'ภาพรวมระบบ' : tab === 'reservations' ? 'ตรวจสอบการจอง' : tab === 'products' ? 'สินค้าและ Stock' : 'ผู้ใช้รายสาขา'}</h1></div>
+          <div><span className="eyebrow eyebrow--orange">HQ / OPERATIONS PORTAL</span><h1>{tab === 'overview' ? 'ภาพรวมระบบ' : tab === 'reservations' ? 'ตรวจสอบการจอง' : tab === 'products' ? 'สินค้าและ Stock' : tab === 'users' ? 'ผู้ใช้รายสาขา' : 'เปลี่ยนรหัสผ่าน'}</h1></div>
           <div className="admin-topbar__actions">
             <label className="system-switch"><span><strong>{state.settings.bookingOpen ? 'ระบบเปิดรับจอง' : 'ระบบปิดรับจอง'}</strong><small>{state.settings.opensAtLabel}</small></span><input type="checkbox" checked={state.settings.bookingOpen} onChange={(event) => void changeBookingSetting(event.target.checked)} /></label>
             <div className="admin-avatar">A</div>
@@ -272,6 +294,19 @@ export function AdminPortal() {
               <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions"><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
               <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>ผู้ใช้ใหม่มีรหัสผ่านเริ่มต้น 1234 · ไม่มีการส่งแจ้งเตือนภายนอก</span></div><div className="data-table data-table--users"><div className="data-table__head"><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => void resetPassword(branch)}>Reset 1234</button></span></div>)}</div></div>
             </>
+          )}
+
+          {tab === 'password' && (
+            <section className="settings-layout">
+              <form className="settings-card form-stack" onSubmit={handlePassword}>
+                <div className="settings-card__intro"><div className="security-icon">⌘</div><div><h2>บัญชี Admin</h2><p>{state.admin.username} · ผู้ดูแลระบบ</p></div></div>
+                <div className="notice"><strong>ความปลอดภัยของบัญชี</strong><span>กรอกรหัสผ่านปัจจุบันก่อนตั้งรหัสผ่านใหม่</span></div>
+                <label><span>รหัสผ่านปัจจุบัน</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
+                <label><span>รหัสผ่านใหม่</span><input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={4} required /></label>
+                <label><span>ยืนยันรหัสผ่านใหม่</span><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={4} required /></label>
+                <button type="submit" className="button button--primary">บันทึกรหัสผ่านใหม่</button>
+              </form>
+            </section>
           )}
         </main>
       </div>

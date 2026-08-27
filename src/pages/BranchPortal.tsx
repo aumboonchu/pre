@@ -116,7 +116,7 @@ function ReservationModal({
 }
 
 export function BranchPortal() {
-  const { state, session, logout, cancel, uploadReceipt, changeBranchPassword } = useAppStore()
+  const { state, session, logout, cancel, uploadReceipt, changePassword } = useAppStore()
   const { toast, showToast } = useToast()
   const [tab, setTab] = useState<BranchTab>('catalog')
   const [query, setQuery] = useState('')
@@ -166,7 +166,7 @@ export function BranchPortal() {
     if (newPassword.length < 4) return showToast('รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร', 'error')
     if (newPassword !== confirmPassword) return showToast('ยืนยันรหัสผ่านไม่ตรงกัน', 'error')
     try {
-      if (!(await changeBranchPassword(branch.id, currentPassword, newPassword))) {
+      if (!(await changePassword(currentPassword, newPassword))) {
         return showToast('รหัสผ่านปัจจุบันไม่ถูกต้อง', 'error')
       }
       setCurrentPassword('')
