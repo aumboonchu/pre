@@ -108,6 +108,7 @@ export function AdminPortal() {
     importProducts,
     deleteProducts,
     importBranches,
+    deleteBranches,
     resetBranchPassword,
     setBookingOpen,
     changePassword,
@@ -121,6 +122,8 @@ export function AdminPortal() {
   const [editingBranch, setEditingBranch] = useState<BranchUser | 'new' | null>(null)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set())
   const [deletingProducts, setDeletingProducts] = useState(false)
+  const [selectedBranchIds, setSelectedBranchIds] = useState<Set<string>>(() => new Set())
+  const [deletingBranches, setDeletingBranches] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -203,6 +206,43 @@ export function AdminPortal() {
       showToast(caught instanceof Error ? caught.message : 'ลบสินค้าไม่สำเร็จ', 'error')
     } finally {
       setDeletingProducts(false)
+    }
+  }
+
+  const toggleBranch = (branchId: string, checked: boolean) => {
+    setSelectedBranchIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(branchId)
+      else next.delete(branchId)
+      return next
+    })
+  }
+
+  const toggleVisibleBranches = (checked: boolean) => {
+    setSelectedBranchIds((current) => {
+      const next = new Set(current)
+      for (const branch of filteredBranches) {
+        if (checked) next.add(branch.id)
+        else next.delete(branch.id)
+      }
+      return next
+    })
+  }
+
+  const handleDeleteBranches = async (scope: 'selected' | 'all', explicitBranchIds?: string[]) => {
+    const branchIds = scope === 'selected' ? (explicitBranchIds ?? [...selectedBranchIds]) : undefined
+    if (scope === 'selected' && !branchIds?.length) return
+    const label = scope === 'all' ? `ผู้ใช้สาขาทั้งหมด ${state.branches.length} บัญชี` : `ผู้ใช้สาขาที่เลือก ${branchIds?.length} บัญชี`
+    if (!window.confirm(`ยืนยันลบ${label}?\n\nสาขาที่มีประวัติการจองจะไม่สามารถลบได้`)) return
+    setDeletingBranches(true)
+    try {
+      const count = await deleteBranches(branchIds)
+      setSelectedBranchIds(new Set())
+      showToast(`ลบผู้ใช้สาขา ${count} บัญชีเรียบร้อย`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'ลบผู้ใช้สาขาไม่สำเร็จ', 'error')
+    } finally {
+      setDeletingBranches(false)
     }
   }
 
@@ -324,15 +364,15 @@ export function AdminPortal() {
 
           {tab === 'products' && (
             <>
-              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="ค้นหา Product / Part Number" /></label><div className="toolbar-actions toolbar-actions--products"><button className="button button--danger-ghost" disabled={selectedProductIds.size === 0 || deletingProducts} onClick={() => void handleDeleteProducts('selected')}>ลบที่เลือก ({selectedProductIds.size})</button><button className="button button--danger" disabled={state.products.length === 0 || deletingProducts} onClick={() => void handleDeleteProducts('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Excel .xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleProductImport} /></label><button className="button button--primary" onClick={() => setEditingProduct('new')}>＋ เพิ่มสินค้า</button></div></div>
+              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="ค้นหา Product / Part Number" /></label><div className="toolbar-actions toolbar-actions--bulk"><button className="button button--danger-ghost" disabled={selectedProductIds.size === 0 || deletingProducts} onClick={() => void handleDeleteProducts('selected')}>ลบที่เลือก ({selectedProductIds.size})</button><button className="button button--danger" disabled={state.products.length === 0 || deletingProducts} onClick={() => void handleDeleteProducts('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Excel .xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleProductImport} /></label><button className="button button--primary" onClick={() => setEditingProduct('new')}>＋ เพิ่มสินค้า</button></div></div>
               <div className="data-panel"><div className="data-panel__note"><strong>ข้อมูลตั้งต้นจาก pre order.xlsx</strong><span>เลือก checkbox เพื่อลบบางรายการ หรือใช้ปุ่มลบทั้งหมด · สินค้าที่มีประวัติการจองจะลบไม่ได้</span></div><div className="data-table data-table--products"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกสินค้าที่แสดงทั้งหมด" checked={filteredProducts.length > 0 && filteredProducts.every((product) => selectedProductIds.has(product.id))} onChange={(event) => toggleVisibleProducts(event.target.checked)} /></span><span>สินค้า / Part Number</span><span>ราคา</span><span>Stock ทั้งหมด</span><span>จองแล้ว</span><span>คงเหลือ</span><span>สถานะ</span><span /></div>{filteredProducts.map((product) => { const booked = product.totalStock - product.remainingStock; return <div className="data-table__row" key={product.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${product.sku}`} checked={selectedProductIds.has(product.id)} onChange={(event) => toggleProduct(product.id, event.target.checked)} /></span><span><strong>{cleanProductName(product.name)}</strong><small>{product.sku}</small></span><span>{currency(product.price)}</span><span>{product.totalStock}</span><span>{booked}</span><span className={product.remainingStock > 0 ? 'green' : 'red'}><strong>{product.remainingStock}</strong></span><span><i className={product.active ? 'active-pill' : 'inactive-pill'}>{product.active ? 'เปิดจอง' : 'ปิด'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingProduct(product)}>แก้ไข</button><button className="text-button text-button--red" onClick={() => void handleDeleteProducts('selected', [product.id])}>ลบ</button></span></div>})}</div></div>
             </>
           )}
 
           {tab === 'users' && (
             <>
-              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions"><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
-              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>ผู้ใช้ใหม่มีรหัสผ่านเริ่มต้น 1234 · ไม่มีการส่งแจ้งเตือนภายนอก</span></div><div className="data-table data-table--users"><div className="data-table__head"><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => void resetPassword(branch)}>Reset 1234</button></span></div>)}</div></div>
+              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions toolbar-actions--bulk"><button className="button button--danger-ghost" disabled={selectedBranchIds.size === 0 || deletingBranches} onClick={() => void handleDeleteBranches('selected')}>ลบที่เลือก ({selectedBranchIds.size})</button><button className="button button--danger" disabled={state.branches.length === 0 || deletingBranches} onClick={() => void handleDeleteBranches('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
+              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>เลือก checkbox เพื่อลบบางบัญชี หรือใช้ปุ่มลบทั้งหมด · สาขาที่มีประวัติการจองจะลบไม่ได้</span></div><div className="data-table data-table--users"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกผู้ใช้สาขาที่แสดงทั้งหมด" checked={filteredBranches.length > 0 && filteredBranches.every((branch) => selectedBranchIds.has(branch.id))} onChange={(event) => toggleVisibleBranches(event.target.checked)} /></span><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${branch.code}`} checked={selectedBranchIds.has(branch.id)} onChange={(event) => toggleBranch(branch.id, event.target.checked)} /></span><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => void resetPassword(branch)}>Reset 1234</button><button className="text-button text-button--red" onClick={() => void handleDeleteBranches('selected', [branch.id])}>ลบ</button></span></div>)}</div></div>
             </>
           )}
 

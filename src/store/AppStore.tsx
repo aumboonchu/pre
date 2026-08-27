@@ -73,6 +73,7 @@ interface AppStoreValue {
   deleteProducts: (productIds?: string[]) => Promise<number>
   upsertBranch: (branch: BranchUser) => Promise<void>
   importBranches: (branches: BranchUser[]) => Promise<void>
+  deleteBranches: (branchIds?: string[]) => Promise<number>
   setBookingOpen: (open: boolean) => Promise<void>
   resetDemo: () => Promise<void>
 }
@@ -450,6 +451,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [commit, refreshRemote],
   )
 
+  const deleteBranches = useCallback(
+    async (branchIds?: string[]) => {
+      if (REMOTE_MODE) {
+        const count = await api.deleteBranches(branchIds)
+        await refreshRemote()
+        return count
+      }
+      const ids = new Set(branchIds ?? stateRef.current.branches.map((branch) => branch.id))
+      const inUse = stateRef.current.reservations.find((reservation) => ids.has(reservation.branchId))
+      if (inUse) throw new Error(`ลบไม่ได้ เนื่องจาก JIB-${inUse.branchId} มีประวัติการจอง`)
+      const nextBranches = stateRef.current.branches.filter((branch) => !ids.has(branch.id))
+      const count = stateRef.current.branches.length - nextBranches.length
+      commit({ ...stateRef.current, branches: nextBranches })
+      return count
+    },
+    [commit, refreshRemote],
+  )
+
   const setBookingOpen = useCallback(
     async (open: boolean) => {
       if (REMOTE_MODE) {
@@ -475,12 +494,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, deleteProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, resetDemo,
     }),
     [
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, deleteProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, resetDemo,
     ],
   )
 

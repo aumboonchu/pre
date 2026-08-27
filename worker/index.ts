@@ -53,6 +53,11 @@ interface ProductUsageRow {
   reservation_count: number
 }
 
+interface BranchUsageRow {
+  id: string
+  reservation_count: number
+}
+
 interface ExistingReservationRow {
   id: string
 }
@@ -587,6 +592,69 @@ async function handleImportBranches(request: Request, env: Env): Promise<Respons
   return json({ ok: true, count: branches.length })
 }
 
+async function handleDeleteBranches(request: Request, env: Env): Promise<Response> {
+  assertSameOrigin(request)
+  const user = await requireAuth(request, env, 'admin')
+  const data = await readJsonObject(request, 100_000)
+  const scope = data.scope
+  if (scope !== 'selected' && scope !== 'all') {
+    throw new HttpError(400, 'VALIDATION_ERROR', 'ขอบเขตการลบสาขาไม่ถูกต้อง')
+  }
+
+  let branchIds: string[]
+  if (scope === 'all') {
+    const result = await env.DB.prepare(
+      `SELECT id FROM users WHERE role = 'branch' ORDER BY id`,
+    ).all<{ id: string }>()
+    branchIds = result.results.map((row) => row.id)
+  } else {
+    if (!Array.isArray(data.branchIds) || data.branchIds.length === 0 || data.branchIds.length > 500) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'กรุณาเลือกสาขา 1–500 รายการ')
+    }
+    branchIds = data.branchIds.map((value) => {
+      if (typeof value !== 'string' || !value.trim() || value.length > 30) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'รหัสสาขาที่เลือกไม่ถูกต้อง')
+      }
+      return value.replace(/^JIB-/i, '').trim()
+    })
+    branchIds = [...new Set(branchIds)]
+  }
+
+  if (branchIds.length === 0) return json({ ok: true, count: 0 })
+
+  const usageChecks = await env.DB.batch(branchIds.map((branchId) => env.DB.prepare(
+    `SELECT u.id, COUNT(r.id) AS reservation_count
+     FROM users u
+     LEFT JOIN reservations r ON r.branch_id = u.id
+     WHERE u.id = ? AND u.role = 'branch'
+     GROUP BY u.id`,
+  ).bind(branchId)))
+  const branchesInUse = usageChecks
+    .map((result) => result.results[0] as BranchUsageRow | undefined)
+    .filter((row): row is BranchUsageRow => Boolean(row && row.reservation_count > 0))
+  if (branchesInUse.length > 0) {
+    throw new HttpError(
+      409,
+      'BRANCH_IN_USE',
+      `ลบไม่ได้ เนื่องจาก JIB-${branchesInUse[0].id} มีประวัติการจอง`,
+    )
+  }
+
+  try {
+    const deletes = await env.DB.batch(branchIds.map((branchId) => (
+      env.DB.prepare(`DELETE FROM users WHERE id = ? AND role = 'branch' RETURNING id`).bind(branchId)
+    )))
+    const count = deletes.reduce((sum, result) => sum + result.results.length, 0)
+    await audit(env, user.id, 'branches.deleted', 'user', null, { count, scope }, Date.now())
+    return json({ ok: true, count })
+  } catch (error) {
+    if (isSqlError(error, 'FOREIGN KEY constraint failed')) {
+      throw new HttpError(409, 'BRANCH_IN_USE', 'ลบไม่ได้ เนื่องจากมีสาขาในรายการที่ถูกใช้อ้างอิงในการจอง')
+    }
+    throw error
+  }
+}
+
 async function handleResetPassword(request: Request, env: Env, branchId: string): Promise<Response> {
   assertSameOrigin(request)
   const user = await requireAuth(request, env, 'admin')
@@ -659,6 +727,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (request.method === 'PUT' && branchId) return handleUpsertBranch(request, env, branchId)
   if (request.method === 'POST' && path === '/api/v1/admin/branches/import') {
     return handleImportBranches(request, env)
+  }
+  if (request.method === 'POST' && path === '/api/v1/admin/branches/delete') {
+    return handleDeleteBranches(request, env)
   }
   const resetId = routeId(path, /^\/api\/v1\/admin\/branches\/([^/]+)\/reset-password$/)
   if (request.method === 'POST' && resetId) return handleResetPassword(request, env, resetId)

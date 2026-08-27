@@ -271,13 +271,13 @@ input:disabled { color: #777; background: #eceeef; }
 .data-table__row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-table__row small { color: #8a8e94; font-size: 8px; }
 .data-table--products .data-table__head, .data-table--products .data-table__row { grid-template-columns: 28px minmax(240px, 2fr) .75fr .65fr .6fr .6fr .7fr .75fr; }
-.data-table--users .data-table__head, .data-table--users .data-table__row { grid-template-columns: minmax(260px, 2fr) 1fr .8fr 1.3fr; }
+.data-table--users .data-table__head, .data-table--users .data-table__row { grid-template-columns: 28px minmax(240px, 2fr) 1fr .8fr 1.5fr; }
 .select-cell { display: grid !important; place-items: center; }
 .select-cell input { width: 15px; height: 15px; accent-color: var(--orange); cursor: pointer; }
 .active-pill, .inactive-pill { display: inline-flex; border-radius: 4px; padding: 4px 6px; background: #e8f5e9; color: var(--green); font-size: 8px; font-style: normal; font-weight: 800; }
 .inactive-pill { background: #ffebee; color: var(--red); }
 .row-actions { display: flex; gap: 12px; }
-.toolbar-actions--products { flex-wrap: wrap; justify-content: flex-end; }
+.toolbar-actions--bulk { flex-wrap: wrap; justify-content: flex-end; }
 
 @media (max-width: 1180px) {
   .product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }

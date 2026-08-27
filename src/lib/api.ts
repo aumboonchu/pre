@@ -152,6 +152,14 @@ export const api = {
     })
   },
 
+  async deleteBranches(branchIds?: string[]): Promise<number> {
+    const result = await request<ApiEnvelope & { count: number }>('/api/v1/admin/branches/delete', {
+      method: 'POST',
+      body: JSON.stringify(branchIds ? { scope: 'selected', branchIds } : { scope: 'all' }),
+    })
+    return result.count
+  },
+
   async resetBranchPassword(branchId: string): Promise<void> {
     await request(`/api/v1/admin/branches/${encodeURIComponent(branchId)}/reset-password`, {
       method: 'POST',
