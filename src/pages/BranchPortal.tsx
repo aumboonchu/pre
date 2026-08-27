@@ -1,6 +1,6 @@
 import { type ChangeEvent, type FormEvent, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Brand, EmptyState, Modal, StatusBadge, StockBadge, Toast } from '../components/Common'
+import { Brand, EmptyState, Modal, StatusBadge, Toast } from '../components/Common'
 import { useToast } from '../hooks/useToast'
 import { cleanProductName, currency, dateTime, fileToDataUrl, timeRemaining } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
@@ -213,11 +213,10 @@ export function BranchPortal() {
               <span className="toolbar__meta">พบ {products.length} รายการ</span>
             </div>
             <section className="product-grid">
-              {products.map((product, index) => (
+              {products.map((product) => (
                 <article className={`product-card ${product.remainingStock === 0 ? 'product-card--sold' : ''}`} key={product.id}>
-                  <div className={`product-visual product-visual--${index % 4}`}><span>17</span><small>{product.name.includes('Pro Max') ? 'PRO MAX' : product.name.includes('Pro') ? 'PRO' : 'IPHONE'}</small></div>
                   <div className="product-card__body">
-                    <div className="product-card__meta"><span>{product.sku}</span><StockBadge remaining={product.remainingStock} /></div>
+                    <div className="product-card__meta"><span>{product.sku}</span></div>
                     <h3>{cleanProductName(product.name)}</h3>
                     <strong className="price">{currency(product.price)}</strong>
                     <button type="button" className="button button--primary button--full" disabled={product.remainingStock <= 0 || !state.settings.bookingOpen} onClick={() => setSelectedProduct(product)}>

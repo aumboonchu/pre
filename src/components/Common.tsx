@@ -20,14 +20,6 @@ export function StatusBadge({ status }: { status: ReservationStatus }) {
   return <span className={className}>{status}</span>
 }
 
-export function StockBadge({ remaining }: { remaining: number }) {
-  return remaining > 0 ? (
-    <span className="stock-badge stock-badge--open">เปิดจอง · เหลือ {remaining}</span>
-  ) : (
-    <span className="stock-badge stock-badge--sold">หมด</span>
-  )
-}
-
 export function Modal({
   title,
   children,
