@@ -2,7 +2,7 @@ import { HttpError, parseCookies } from './http'
 
 export const SESSION_COOKIE = 'jib_pre_session'
 const SESSION_TTL_SECONDS = 12 * 60 * 60
-const PASSWORD_ITERATIONS = 120_000
+const PASSWORD_ITERATIONS = 100_000
 
 export interface AuthUser {
   id: string

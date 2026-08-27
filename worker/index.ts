@@ -20,7 +20,7 @@ import {
 } from './http'
 
 const DEFAULT_PASSWORD_SALT = 'HwEOBdokadDPVZ0tZceMlw=='
-const DEFAULT_PASSWORD_HASH = 'T0BHo4aZVIQE3H9P7sQ6wl/lJQgVq0r1Q9OwFIhCJwQ='
+const DEFAULT_PASSWORD_HASH = 'Ud8T+IAyiTIu9ce0owZT8bxx9yLxtDaYaBXuzLqFgQ4='
 const RECEIPT_LIMIT_BYTES = 10 * 1024 * 1024
 const RECEIPT_TYPES = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif'])
 const RESERVATION_TTL_MS = 72 * 60 * 60 * 1000
