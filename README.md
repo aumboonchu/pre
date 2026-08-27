@@ -1,61 +1,85 @@
 # JIB Pre-Interest / Pre-Order
 
-Frontend สำหรับระบบจองสินค้าล่วงหน้าของสาขา JIB ออกแบบจาก Figma และใช้ข้อมูลตั้งต้นจากไฟล์ `pre order.xlsx` และ `Branch.xlsx`
+ระบบจองสินค้าล่วงหน้าสำหรับสาขา JIB แบบ Full-stack พัฒนาด้วย React, Cloudflare Workers, D1 และ Workers KV โดยใช้ข้อมูลตั้งต้นจาก `pre order.xlsx` และ `Branch.xlsx` และแก้ไขข้อมูลภายหลังได้จากหน้า Admin
 
-## บัญชีทดสอบ
+## บัญชีเริ่มต้น
 
-- สาขา: `JIB-284` / `1234` (หรือใช้ `jib284`)
-- Admin: `admin` / `1234`
+- สาขา: `JIB-284` / `1234` (หรือ Username `jib284`)
+- Admin: `admin` / รหัสเริ่มต้นที่ส่งให้เจ้าของระบบหลัง Deploy
 
-ผู้ใช้สาขาทุกบัญชีจาก Excel มีรหัสผ่านเริ่มต้น `1234` และ Admin สามารถ Reset กลับเป็น `1234` ได้
+บัญชีสาขาทุกบัญชีใช้รหัสผ่านเริ่มต้น `1234` และ Admin สามารถ Reset รหัสของสาขากลับเป็น `1234` ได้ ควรเปลี่ยนรหัสผ่าน Admin และบัญชีใช้งานจริงทันทีหลัง Deploy ระบบเริ่มต้นโดยปิดรับจองจนกว่า Admin จะตรวจ Stock และกดเปิด
 
-## ฟังก์ชันที่พัฒนาแล้ว
+## ฟังก์ชันหลัก
 
 ### Branch Portal
 
 - Login ด้วยรหัสสาขา, Branch Code หรือ Username
-- จองสินค้าได้ครั้งละ 1 เครื่อง และสร้างหลายรายการได้
+- จองครั้งละ 1 เครื่อง แต่มีรายการจองหลายรายการได้
 - บังคับกรอกชื่อลูกค้าและเบอร์โทร
-- แนบใบเสร็จตอนจองหรือภายหลัง รองรับ JPG, PNG และ HEIC
-- แสดงสถานะ `Waiting for Approved`, `Confirmed`, `Cancel`
-- ยกเลิกจองเอง พร้อมคืน Stock
-- หมดสิทธิ์และคืน Stock อัตโนมัติเมื่อไม่มีใบเสร็จภายใน 72 ชั่วโมง
-- เปลี่ยนรหัสผ่าน
+- แนบใบเสร็จตอนจองหรือภายใน 72 ชั่วโมง รองรับ JPG, PNG, HEIC และ HEIF ไม่เกิน 10 MB
+- ดูสถานะ `Waiting for Approved`, `Confirmed` และ `Cancel`
+- ยกเลิกเองได้ โดยระบบคืน Stock เพียงครั้งเดียว
+- เปลี่ยนรหัสผ่านได้
 
 ### Admin Portal
 
 - Dashboard สรุปรายการจองและ Stock คงเหลือ
-- ตรวจใบเสร็จ อนุมัติ หรือไม่อนุมัติรายการ
-- Import Product/Part Number จาก Excel และแก้ไข Stock รายสินค้า
-- Import/แก้ไขผู้ใช้สาขา และ Reset Password เป็น `1234`
-- เปิด/ปิดรับจองจากหน้า Admin
-- Report ภายในเว็บไซต์เท่านั้น ไม่มี Email, LINE หรือ Push Notification
+- ตรวจใบเสร็จ อนุมัติ หรือยกเลิกรายการ
+- Import และแก้ไข Product/Part Number, ราคา และ Stock
+- Import และแก้ไขผู้ใช้สาขา พร้อม Reset Password เป็น `1234`
+- เปิดหรือปิดรับจอง
+- Report ภายในเว็บไซต์ ไม่มี Email, LINE หรือ Push Notification
 
-## Race-condition safeguards
+## ป้องกันการจองเกิน Stock
 
-โหมด Frontend prototype ใช้ Web Locks + serial fallback, re-read state ก่อนหัก Stock, Idempotency Key ต่อ Submit, ปิดปุ่มขณะส่ง และคืน Stock แบบ idempotent เมื่อยกเลิก/หมดเวลา
+ฐานข้อมูลเป็นผู้ตัดสินสิทธิ์สุดท้าย ไม่พึ่งค่าจากหน้าจอ:
 
-> Production ต้องให้ Backend และ Database เป็นผู้ตัดสินสิทธิ์สุดท้าย ดูรายละเอียดที่ [docs/API_CONTRACT.md](docs/API_CONTRACT.md)
+- Trigger ของ D1 ตรวจ Stock, หัก 1 เครื่อง และสร้างรายการในคำสั่งฐานข้อมูลเดียว
+- Constraint บังคับ `remaining_stock >= 0`; หนึ่งแถว reservation แทนหนึ่งเครื่องโดยไม่มี quantity ที่ client เปลี่ยนได้
+- Unique Idempotency Key ต่อสาขา ป้องกันการ Submit ซ้ำ
+- การ Cancel หรือหมดเวลาเปลี่ยนสถานะและคืน Stock ด้วย Trigger ที่ทำงานเฉพาะครั้งแรก
+- Cron ทำงานทุก 15 นาทีเพื่อยกเลิกรายการที่ไม่มีใบเสร็จเกิน 72 ชั่วโมง
 
-กรณีทดสอบ Stock 5 กับ 20 คำขอพร้อมกันอยู่ใน `src/lib/reservationEngine.test.ts` และต้องได้ผลสำเร็จ 5 รายการ, Sold out 15 รายการ, Stock คงเหลือ 0
+ชุดทดสอบจำลอง Stock 5 กับ 20 คำขอพร้อมกันต้องสำเร็จ 5 รายการ, Sold out 15 รายการ และ Stock คงเหลือ 0
 
-## เริ่มใช้งาน
+## สถาปัตยกรรม
 
-ต้องใช้ Node.js 20.19+ ตามข้อกำหนดของ Vite
+- React + Vite: หน้า Branch และ Admin
+- Cloudflare Worker: API, session, validation และ scheduled cleanup
+- Cloudflare D1: ผู้ใช้ สินค้า Stock รายการจอง และ audit log
+- Cloudflare Workers KV: เก็บรูปใบเสร็จแบบ private; อ่านได้ผ่าน API ที่ตรวจ session เท่านั้น
+- PBKDF2-SHA256: เก็บรหัสผ่านแบบ salt + hash
+- Session cookie: `HttpOnly`, `Secure` และ `SameSite=Lax`
+
+## เริ่มใช้งานในเครื่อง
+
+ต้องใช้ Node.js 20.19 ขึ้นไปและ pnpm
 
 ```bash
 pnpm install
-pnpm dev
+pnpm db:migrate:local
+pnpm dev:worker
 ```
 
-ตรวจคุณภาพโค้ด:
+`pnpm dev` ใช้สำหรับตรวจ UI แบบ mock/localStorage ส่วน `pnpm dev:worker` เปิด Full-stack พร้อม API และฐานข้อมูล local
+
+## ตรวจคุณภาพโค้ด
 
 ```bash
 pnpm lint
 pnpm test
+pnpm test:worker
 pnpm build
 ```
 
-## หมายเหตุการเชื่อม Backend
+## Deploy Cloudflare
 
-เวอร์ชันนี้เป็น Frontend repository จึงเก็บข้อมูลจำลองใน Browser local storage เพื่อให้ตรวจ UX และ workflow ได้ครบ เมื่อ Backend พร้อมให้แทนที่ action ใน `src/store/AppStore.tsx` ด้วย API ตาม contract โดยคง validation และสถานะ UI เดิมไว้
+ไฟล์ `wrangler.jsonc` ผูก D1 และ KV ของโปรเจกต์ไว้แล้ว
+
+```bash
+pnpm exec wrangler login
+pnpm exec wrangler d1 migrations apply jib-pre-interest-db --remote
+pnpm deploy
+```
+
+รายละเอียด API และกติกาความถูกต้องอยู่ที่ [docs/API_CONTRACT.md](docs/API_CONTRACT.md)

@@ -6,31 +6,40 @@ import { useAppStore } from '../store/AppStore'
 export function LoginPage() {
   const { state, session, loginAdmin, loginBranch } = useAppStore()
   const navigate = useNavigate()
+  const remoteMode = import.meta.env.VITE_API_MODE === 'remote'
   const [role, setRole] = useState<'branch' | 'admin'>('branch')
-  const [identifier, setIdentifier] = useState('JIB-284')
-  const [password, setPassword] = useState('1234')
+  const [identifier, setIdentifier] = useState(remoteMode ? '' : 'JIB-284')
+  const [password, setPassword] = useState(remoteMode ? '' : '1234')
   const [error, setError] = useState('')
 
   if (session?.role === 'branch') return <Navigate to="/branch" replace />
   if (session?.role === 'admin') return <Navigate to="/admin" replace />
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const valid =
-      role === 'branch'
-        ? loginBranch(identifier, password)
-        : loginAdmin(identifier, password)
-    if (!valid) {
-      setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
-      return
+    setError('')
+    try {
+      const valid =
+        role === 'branch'
+          ? await loginBranch(identifier, password)
+          : await loginAdmin(identifier, password)
+      if (!valid) {
+        setError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+        return
+      }
+      navigate(role === 'branch' ? '/branch' : '/admin')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'เข้าสู่ระบบไม่สำเร็จ')
     }
-    navigate(role === 'branch' ? '/branch' : '/admin')
   }
 
   const switchRole = (next: 'branch' | 'admin') => {
     setRole(next)
     setError('')
-    if (next === 'branch') {
+    if (remoteMode) {
+      setIdentifier('')
+      setPassword('')
+    } else if (next === 'branch') {
       setIdentifier('JIB-284')
       setPassword('1234')
     } else {
@@ -101,10 +110,12 @@ export function LoginPage() {
             {error && <p className="form-error">{error}</p>}
             <button className="button button--primary button--large" type="submit">เข้าสู่ระบบ <span>→</span></button>
           </form>
-          <div className="demo-credential">
-            <span>บัญชีทดสอบ</span>
-            <code>{role === 'branch' ? 'JIB-284 / 1234' : 'admin / 1234'}</code>
-          </div>
+          {!remoteMode && (
+            <div className="demo-credential">
+              <span>บัญชีทดสอบ</span>
+              <code>{role === 'branch' ? 'JIB-284 / 1234' : 'admin / 1234'}</code>
+            </div>
+          )}
         </div>
       </section>
     </main>

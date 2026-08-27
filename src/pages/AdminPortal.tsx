@@ -16,20 +16,26 @@ function ProductEditor({ product, onClose, onSaved }: { product?: Product; onClo
   const [price, setPrice] = useState(String(product?.price ?? 0))
   const [stock, setStock] = useState(String(product?.totalStock ?? 0))
   const [active, setActive] = useState(product?.active ?? true)
+  const [error, setError] = useState('')
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
     const normalizedSku = sku.trim()
-    upsertProduct({
-      id: product?.id ?? normalizedSku,
-      sku: normalizedSku,
-      name: name.trim(),
-      price: Math.max(0, Number(price)),
-      totalStock: Math.max(0, Math.floor(Number(stock))),
-      remainingStock: product?.remainingStock ?? Math.max(0, Math.floor(Number(stock))),
-      active,
-    })
-    onSaved()
+    setError('')
+    try {
+      await upsertProduct({
+        id: product?.id ?? normalizedSku,
+        sku: normalizedSku,
+        name: name.trim(),
+        price: Math.max(0, Number(price)),
+        totalStock: Math.max(0, Math.floor(Number(stock))),
+        remainingStock: product?.remainingStock ?? Math.max(0, Math.floor(Number(stock))),
+        active,
+      })
+      onSaved()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'บันทึกสินค้าไม่สำเร็จ')
+    }
   }
 
   return (
@@ -43,6 +49,7 @@ function ProductEditor({ product, onClose, onSaved }: { product?: Product; onClo
         </div>
         <label className="toggle-row"><span><strong>เปิดรับจองสินค้า</strong><small>สินค้าที่ปิดจะไม่แสดงในหน้าสาขา</small></span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
         <div className="notice"><strong>Stock safety</strong><span>ระบบจะไม่อนุญาตให้ลด Stock ต่ำกว่าจำนวนรายการที่ยัง Active</span></div>
+        {error && <p className="form-error">{error}</p>}
         <div className="modal__actions"><button type="button" className="button button--ghost" onClick={onClose}>ยกเลิก</button><button type="submit" className="button button--primary">บันทึกสินค้า</button></div>
       </form>
     </Modal>
@@ -55,19 +62,25 @@ function BranchEditor({ branch, onClose, onSaved }: { branch?: BranchUser; onClo
   const [name, setName] = useState(branch?.name ?? '')
   const [username, setUsername] = useState(branch?.username ?? '')
   const [active, setActive] = useState(branch?.active ?? true)
+  const [error, setError] = useState('')
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
     const normalizedId = id.replace(/^JIB-/i, '').trim()
-    upsertBranch({
-      id: normalizedId,
-      code: `JIB-${normalizedId}`,
-      name: name.trim(),
-      username: username.trim() || `jib${normalizedId}`,
-      password: branch?.password ?? '1234',
-      active,
-    })
-    onSaved()
+    setError('')
+    try {
+      await upsertBranch({
+        id: normalizedId,
+        code: `JIB-${normalizedId}`,
+        name: name.trim(),
+        username: username.trim() || `jib${normalizedId}`,
+        password: branch?.password ?? '1234',
+        active,
+      })
+      onSaved()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'บันทึกผู้ใช้ไม่สำเร็จ')
+    }
   }
 
   return (
@@ -78,6 +91,7 @@ function BranchEditor({ branch, onClose, onSaved }: { branch?: BranchUser; onClo
         <label><span>Username</span><input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="ระบบสร้าง jib + รหัสสาขาให้อัตโนมัติ" /></label>
         <label className="toggle-row"><span><strong>เปิดใช้งานบัญชี</strong><small>ปิดเพื่อระงับการเข้าสู่ระบบชั่วคราว</small></span><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /></label>
         {!branch && <div className="notice notice--warning"><strong>รหัสผ่านเริ่มต้น 1234</strong><span>Admin สามารถ Reset กลับเป็น 1234 ได้ภายหลัง</span></div>}
+        {error && <p className="form-error">{error}</p>}
         <div className="modal__actions"><button type="button" className="button button--ghost" onClick={onClose}>ยกเลิก</button><button type="submit" className="button button--primary">บันทึกผู้ใช้</button></div>
       </form>
     </Modal>
@@ -127,7 +141,7 @@ export function AdminPortal() {
     if (!file) return
     try {
       const products = await readProductsExcel(file)
-      importProducts(products)
+      await importProducts(products)
       showToast(`นำเข้าสินค้า ${products.length} รายการเรียบร้อย`)
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'นำเข้าไฟล์ไม่สำเร็จ', 'error')
@@ -140,7 +154,7 @@ export function AdminPortal() {
     if (!file) return
     try {
       const branches = await readBranchesExcel(file)
-      importBranches(branches)
+      await importBranches(branches)
       showToast(`นำเข้าสาขา ${branches.length} รายการเรียบร้อย`)
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'นำเข้าไฟล์ไม่สำเร็จ', 'error')
@@ -149,14 +163,40 @@ export function AdminPortal() {
   }
 
   const approveItem = async (id: string) => {
-    await approve(id)
-    showToast('อนุมัติรายการจองเรียบร้อย')
+    try {
+      await approve(id)
+      showToast('อนุมัติรายการจองเรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'อนุมัติรายการไม่สำเร็จ', 'error')
+    }
   }
 
   const rejectItem = async (id: string) => {
     if (!window.confirm('ไม่อนุมัติรายการนี้? ระบบจะคืน Stock ทันที')) return
-    await reject(id)
-    showToast('ยกเลิกรายการและคืน Stock เรียบร้อย')
+    try {
+      await reject(id)
+      showToast('ยกเลิกรายการและคืน Stock เรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'ยกเลิกรายการไม่สำเร็จ', 'error')
+    }
+  }
+
+  const changeBookingSetting = async (open: boolean) => {
+    try {
+      await setBookingOpen(open)
+      showToast(open ? 'เปิดรับจองแล้ว' : 'ปิดรับจองแล้ว')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'เปลี่ยนสถานะระบบไม่สำเร็จ', 'error')
+    }
+  }
+
+  const resetPassword = async (branch: BranchUser) => {
+    try {
+      await resetBranchPassword(branch.id)
+      showToast(`${branch.code} ถูก Reset เป็น 1234 แล้ว`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Reset password ไม่สำเร็จ', 'error')
+    }
   }
 
   return (
@@ -178,7 +218,7 @@ export function AdminPortal() {
         <header className="admin-topbar">
           <div><span className="eyebrow eyebrow--orange">HQ / OPERATIONS PORTAL</span><h1>{tab === 'overview' ? 'ภาพรวมระบบ' : tab === 'reservations' ? 'ตรวจสอบการจอง' : tab === 'products' ? 'สินค้าและ Stock' : 'ผู้ใช้รายสาขา'}</h1></div>
           <div className="admin-topbar__actions">
-            <label className="system-switch"><span><strong>{state.settings.bookingOpen ? 'ระบบเปิดรับจอง' : 'ระบบปิดรับจอง'}</strong><small>{state.settings.opensAtLabel}</small></span><input type="checkbox" checked={state.settings.bookingOpen} onChange={(event) => setBookingOpen(event.target.checked)} /></label>
+            <label className="system-switch"><span><strong>{state.settings.bookingOpen ? 'ระบบเปิดรับจอง' : 'ระบบปิดรับจอง'}</strong><small>{state.settings.opensAtLabel}</small></span><input type="checkbox" checked={state.settings.bookingOpen} onChange={(event) => void changeBookingSetting(event.target.checked)} /></label>
             <div className="admin-avatar">A</div>
           </div>
         </header>
@@ -209,7 +249,7 @@ export function AdminPortal() {
                   {state.reservations.length === 0 ? <EmptyState title="ยังไม่มีรายการ" description="รายการใหม่จากสาขาจะปรากฏที่นี่" /> : <div className="compact-table">{state.reservations.slice(0, 6).map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <div key={reservation.id}><span><strong>{reservation.id}</strong><small>{dateTime(reservation.createdAt)}</small></span><span>{branch?.code}<small>{branch?.name}</small></span><span>{product ? cleanProductName(product.name) : reservation.productId}</span><StatusBadge status={reservation.status} /></div>})}</div>}
                 </article>
               </section>
-              <section className="safeguard-banner"><div><span>⚡</span><div><strong>Race Condition Defenses พร้อมทำงาน</strong><p>Frontend ป้องกันกดซ้ำและรองรับ 409 Sold out; Production ต้องใช้ transaction และ unique idempotency ที่ Backend/Database</p></div></div><div className="safeguard-tags"><span>Atomic Stock</span><span>Idempotency</span><span>Server Time 20:00</span><span>72h Restore</span></div></section>
+              <section className="safeguard-banner"><div><span>⚡</span><div><strong>Race Condition Defenses พร้อมทำงานจริง</strong><p>Database หัก Stock แบบ Atomic และบังคับ Unique Idempotency Key จึงไม่รับจองเกินแม้สาขากดพร้อมกัน</p></div></div><div className="safeguard-tags"><span>Atomic Stock</span><span>Idempotency</span><span>Server Time 20:00</span><span>72h Restore</span></div></section>
             </>
           )}
 
@@ -230,7 +270,7 @@ export function AdminPortal() {
           {tab === 'users' && (
             <>
               <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions"><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
-              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>ผู้ใช้ใหม่มีรหัสผ่านเริ่มต้น 1234 · ไม่มีการส่งแจ้งเตือนภายนอก</span></div><div className="data-table data-table--users"><div className="data-table__head"><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => { resetBranchPassword(branch.id); showToast(`${branch.code} ถูก Reset เป็น 1234 แล้ว`) }}>Reset 1234</button></span></div>)}</div></div>
+              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>ผู้ใช้ใหม่มีรหัสผ่านเริ่มต้น 1234 · ไม่มีการส่งแจ้งเตือนภายนอก</span></div><div className="data-table data-table--users"><div className="data-table__head"><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => void resetPassword(branch)}>Reset 1234</button></span></div>)}</div></div>
             </>
           )}
         </main>

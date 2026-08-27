@@ -153,21 +153,29 @@ export function BranchPortal() {
 
   const handleCancel = async (reservationId: string) => {
     if (!window.confirm('ยืนยันยกเลิกรายการจอง? Stock จะถูกคืนทันที')) return
-    await cancel(reservationId, 'สาขายกเลิกเอง')
-    showToast('ยกเลิกรายการและคืน Stock เรียบร้อย')
+    try {
+      await cancel(reservationId, 'สาขายกเลิกเอง')
+      showToast('ยกเลิกรายการและคืน Stock เรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'ยกเลิกรายการไม่สำเร็จ', 'error')
+    }
   }
 
-  const handlePassword = (event: FormEvent) => {
+  const handlePassword = async (event: FormEvent) => {
     event.preventDefault()
     if (newPassword.length < 4) return showToast('รหัสผ่านใหม่ต้องมีอย่างน้อย 4 ตัวอักษร', 'error')
     if (newPassword !== confirmPassword) return showToast('ยืนยันรหัสผ่านไม่ตรงกัน', 'error')
-    if (!changeBranchPassword(branch.id, currentPassword, newPassword)) {
-      return showToast('รหัสผ่านปัจจุบันไม่ถูกต้อง', 'error')
+    try {
+      if (!(await changeBranchPassword(branch.id, currentPassword, newPassword))) {
+        return showToast('รหัสผ่านปัจจุบันไม่ถูกต้อง', 'error')
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      showToast('เปลี่ยนรหัสผ่านเรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'เปลี่ยนรหัสผ่านไม่สำเร็จ', 'error')
     }
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-    showToast('เปลี่ยนรหัสผ่านเรียบร้อย')
   }
 
   return (
