@@ -130,6 +130,14 @@ export const api = {
     })
   },
 
+  async deleteProducts(productIds?: string[]): Promise<number> {
+    const result = await request<ApiEnvelope & { count: number }>('/api/v1/admin/products/delete', {
+      method: 'POST',
+      body: JSON.stringify(productIds ? { scope: 'selected', productIds } : { scope: 'all' }),
+    })
+    return result.count
+  },
+
   async upsertBranch(branch: BranchUser): Promise<void> {
     await request(`/api/v1/admin/branches/${encodeURIComponent(branch.id)}`, {
       method: 'PUT',

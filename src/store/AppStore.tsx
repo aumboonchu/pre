@@ -70,6 +70,7 @@ interface AppStoreValue {
   resetBranchPassword: (branchId: string) => Promise<void>
   upsertProduct: (product: Product) => Promise<void>
   importProducts: (products: Product[]) => Promise<void>
+  deleteProducts: (productIds?: string[]) => Promise<number>
   upsertBranch: (branch: BranchUser) => Promise<void>
   importBranches: (branches: BranchUser[]) => Promise<void>
   setBookingOpen: (open: boolean) => Promise<void>
@@ -397,6 +398,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [commit, refreshRemote],
   )
 
+  const deleteProducts = useCallback(
+    async (productIds?: string[]) => {
+      if (REMOTE_MODE) {
+        const count = await api.deleteProducts(productIds)
+        await refreshRemote()
+        return count
+      }
+      const ids = new Set(productIds ?? stateRef.current.products.map((product) => product.id))
+      const inUse = stateRef.current.reservations.find((reservation) => ids.has(reservation.productId))
+      if (inUse) throw new Error(`ลบไม่ได้ เนื่องจาก ${inUse.productId} มีประวัติการจอง`)
+      const nextProducts = stateRef.current.products.filter((product) => !ids.has(product.id))
+      const count = stateRef.current.products.length - nextProducts.length
+      commit({ ...stateRef.current, products: nextProducts })
+      return count
+    },
+    [commit, refreshRemote],
+  )
+
   const upsertBranch = useCallback(
     async (branch: BranchUser) => {
       if (REMOTE_MODE) {
@@ -456,12 +475,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
     }),
     [
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, setBookingOpen, resetDemo,
     ],
   )
 

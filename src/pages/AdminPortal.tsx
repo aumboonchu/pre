@@ -106,6 +106,7 @@ export function AdminPortal() {
     approve,
     reject,
     importProducts,
+    deleteProducts,
     importBranches,
     resetBranchPassword,
     setBookingOpen,
@@ -118,6 +119,8 @@ export function AdminPortal() {
   const [branchQuery, setBranchQuery] = useState('')
   const [editingProduct, setEditingProduct] = useState<Product | 'new' | null>(null)
   const [editingBranch, setEditingBranch] = useState<BranchUser | 'new' | null>(null)
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set())
+  const [deletingProducts, setDeletingProducts] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -164,6 +167,43 @@ export function AdminPortal() {
       showToast(caught instanceof Error ? caught.message : 'นำเข้าไฟล์ไม่สำเร็จ', 'error')
     }
     event.target.value = ''
+  }
+
+  const toggleProduct = (productId: string, checked: boolean) => {
+    setSelectedProductIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(productId)
+      else next.delete(productId)
+      return next
+    })
+  }
+
+  const toggleVisibleProducts = (checked: boolean) => {
+    setSelectedProductIds((current) => {
+      const next = new Set(current)
+      for (const product of filteredProducts) {
+        if (checked) next.add(product.id)
+        else next.delete(product.id)
+      }
+      return next
+    })
+  }
+
+  const handleDeleteProducts = async (scope: 'selected' | 'all', explicitProductIds?: string[]) => {
+    const productIds = scope === 'selected' ? (explicitProductIds ?? [...selectedProductIds]) : undefined
+    if (scope === 'selected' && !productIds?.length) return
+    const label = scope === 'all' ? `สินค้าทั้งหมด ${state.products.length} รายการ` : `สินค้าที่เลือก ${productIds?.length} รายการ`
+    if (!window.confirm(`ยืนยันลบ${label}?\n\nสินค้าที่มีประวัติการจองจะไม่สามารถลบได้`)) return
+    setDeletingProducts(true)
+    try {
+      const count = await deleteProducts(productIds)
+      setSelectedProductIds(new Set())
+      showToast(`ลบสินค้า ${count} รายการเรียบร้อย`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'ลบสินค้าไม่สำเร็จ', 'error')
+    } finally {
+      setDeletingProducts(false)
+    }
   }
 
   const approveItem = async (id: string) => {
@@ -284,8 +324,8 @@ export function AdminPortal() {
 
           {tab === 'products' && (
             <>
-              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="ค้นหา Product / Part Number" /></label><div className="toolbar-actions"><label className="button button--outline">นำเข้า Excel .xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleProductImport} /></label><button className="button button--primary" onClick={() => setEditingProduct('new')}>＋ เพิ่มสินค้า</button></div></div>
-              <div className="data-panel"><div className="data-panel__note"><strong>ข้อมูลตั้งต้นจาก pre order.xlsx</strong><span>รองรับคอลัมน์ Product, Product Name, Sell Price และ Stock (ถ้ามี) · Stock เดิมจะถูกเก็บไว้เมื่อ Import ซ้ำ</span></div><div className="data-table data-table--products"><div className="data-table__head"><span>สินค้า / Part Number</span><span>ราคา</span><span>Stock ทั้งหมด</span><span>จองแล้ว</span><span>คงเหลือ</span><span>สถานะ</span><span /></div>{filteredProducts.map((product) => { const booked = product.totalStock - product.remainingStock; return <div className="data-table__row" key={product.id}><span><strong>{cleanProductName(product.name)}</strong><small>{product.sku}</small></span><span>{currency(product.price)}</span><span>{product.totalStock}</span><span>{booked}</span><span className={product.remainingStock > 0 ? 'green' : 'red'}><strong>{product.remainingStock}</strong></span><span><i className={product.active ? 'active-pill' : 'inactive-pill'}>{product.active ? 'เปิดจอง' : 'ปิด'}</i></span><span><button className="text-button" onClick={() => setEditingProduct(product)}>แก้ไข</button></span></div>})}</div></div>
+              <div className="section-toolbar"><label className="search"><span>⌕</span><input value={productQuery} onChange={(event) => setProductQuery(event.target.value)} placeholder="ค้นหา Product / Part Number" /></label><div className="toolbar-actions toolbar-actions--products"><button className="button button--danger-ghost" disabled={selectedProductIds.size === 0 || deletingProducts} onClick={() => void handleDeleteProducts('selected')}>ลบที่เลือก ({selectedProductIds.size})</button><button className="button button--danger" disabled={state.products.length === 0 || deletingProducts} onClick={() => void handleDeleteProducts('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Excel .xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleProductImport} /></label><button className="button button--primary" onClick={() => setEditingProduct('new')}>＋ เพิ่มสินค้า</button></div></div>
+              <div className="data-panel"><div className="data-panel__note"><strong>ข้อมูลตั้งต้นจาก pre order.xlsx</strong><span>เลือก checkbox เพื่อลบบางรายการ หรือใช้ปุ่มลบทั้งหมด · สินค้าที่มีประวัติการจองจะลบไม่ได้</span></div><div className="data-table data-table--products"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกสินค้าที่แสดงทั้งหมด" checked={filteredProducts.length > 0 && filteredProducts.every((product) => selectedProductIds.has(product.id))} onChange={(event) => toggleVisibleProducts(event.target.checked)} /></span><span>สินค้า / Part Number</span><span>ราคา</span><span>Stock ทั้งหมด</span><span>จองแล้ว</span><span>คงเหลือ</span><span>สถานะ</span><span /></div>{filteredProducts.map((product) => { const booked = product.totalStock - product.remainingStock; return <div className="data-table__row" key={product.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${product.sku}`} checked={selectedProductIds.has(product.id)} onChange={(event) => toggleProduct(product.id, event.target.checked)} /></span><span><strong>{cleanProductName(product.name)}</strong><small>{product.sku}</small></span><span>{currency(product.price)}</span><span>{product.totalStock}</span><span>{booked}</span><span className={product.remainingStock > 0 ? 'green' : 'red'}><strong>{product.remainingStock}</strong></span><span><i className={product.active ? 'active-pill' : 'inactive-pill'}>{product.active ? 'เปิดจอง' : 'ปิด'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingProduct(product)}>แก้ไข</button><button className="text-button text-button--red" onClick={() => void handleDeleteProducts('selected', [product.id])}>ลบ</button></span></div>})}</div></div>
             </>
           )}
 

@@ -48,6 +48,11 @@ interface ExistingProductRow {
   id: string
 }
 
+interface ProductUsageRow {
+  id: string
+  reservation_count: number
+}
+
 interface ExistingReservationRow {
   id: string
 }
@@ -447,6 +452,67 @@ async function handleImportProducts(request: Request, env: Env): Promise<Respons
   return json({ ok: true, count: products.length })
 }
 
+async function handleDeleteProducts(request: Request, env: Env): Promise<Response> {
+  assertSameOrigin(request)
+  const user = await requireAuth(request, env, 'admin')
+  const data = await readJsonObject(request, 100_000)
+  const scope = data.scope
+  if (scope !== 'selected' && scope !== 'all') {
+    throw new HttpError(400, 'VALIDATION_ERROR', 'ขอบเขตการลบสินค้าไม่ถูกต้อง')
+  }
+
+  let productIds: string[]
+  if (scope === 'all') {
+    const result = await env.DB.prepare('SELECT id FROM products ORDER BY id').all<{ id: string }>()
+    productIds = result.results.map((row) => row.id)
+  } else {
+    if (!Array.isArray(data.productIds) || data.productIds.length === 0 || data.productIds.length > 500) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'กรุณาเลือกสินค้า 1–500 รายการ')
+    }
+    productIds = data.productIds.map((value) => {
+      if (typeof value !== 'string' || !value.trim() || value.length > 100) {
+        throw new HttpError(400, 'VALIDATION_ERROR', 'Part Number ที่เลือกไม่ถูกต้อง')
+      }
+      return value.trim()
+    })
+    productIds = [...new Set(productIds)]
+  }
+
+  if (productIds.length === 0) return json({ ok: true, count: 0 })
+
+  const usageChecks = await env.DB.batch(productIds.map((productId) => env.DB.prepare(
+    `SELECT p.id, COUNT(r.id) AS reservation_count
+     FROM products p
+     LEFT JOIN reservations r ON r.product_id = p.id
+     WHERE p.id = ?
+     GROUP BY p.id`,
+  ).bind(productId)))
+  const productsInUse = usageChecks
+    .map((result) => result.results[0] as ProductUsageRow | undefined)
+    .filter((row): row is ProductUsageRow => Boolean(row && row.reservation_count > 0))
+  if (productsInUse.length > 0) {
+    throw new HttpError(
+      409,
+      'PRODUCT_IN_USE',
+      `ลบไม่ได้ เนื่องจาก ${productsInUse[0].id} มีประวัติการจอง`,
+    )
+  }
+
+  try {
+    const deletes = await env.DB.batch(productIds.map((productId) => (
+      env.DB.prepare('DELETE FROM products WHERE id = ?').bind(productId)
+    )))
+    const count = deletes.reduce((sum, result) => sum + result.meta.changes, 0)
+    await audit(env, user.id, 'products.deleted', 'product', null, { count, scope }, Date.now())
+    return json({ ok: true, count })
+  } catch (error) {
+    if (isSqlError(error, 'FOREIGN KEY constraint failed')) {
+      throw new HttpError(409, 'PRODUCT_IN_USE', 'ลบไม่ได้ เนื่องจากมีสินค้าในรายการที่ถูกใช้อ้างอิงในการจอง')
+    }
+    throw error
+  }
+}
+
 interface BranchInput {
   id: string
   code: string
@@ -585,6 +651,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (request.method === 'PUT' && productId) return handleUpsertProduct(request, env, productId)
   if (request.method === 'POST' && path === '/api/v1/admin/products/import') {
     return handleImportProducts(request, env)
+  }
+  if (request.method === 'POST' && path === '/api/v1/admin/products/delete') {
+    return handleDeleteProducts(request, env)
   }
   const branchId = routeId(path, /^\/api\/v1\/admin\/branches\/([^/]+)$/)
   if (request.method === 'PUT' && branchId) return handleUpsertBranch(request, env, branchId)
