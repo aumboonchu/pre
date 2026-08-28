@@ -1,4 +1,12 @@
-import type { AppState, BranchUser, Product, Receipt, ReservationInput, Session } from '../types'
+import type {
+  AppState,
+  BranchDirectoryEntry,
+  BranchUser,
+  Product,
+  Receipt,
+  ReservationInput,
+  Session,
+} from '../types'
 
 interface ApiEnvelope {
   ok: boolean
@@ -47,6 +55,13 @@ function receiptFile(receipt: Receipt): File {
 }
 
 export const api = {
+  async branchDirectory(): Promise<BranchDirectoryEntry[]> {
+    const result = await request<ApiEnvelope & { branches: BranchDirectoryEntry[] }>(
+      '/api/v1/public/branches',
+    )
+    return result.branches
+  },
+
   async login(identifier: string, password: string, role: 'branch' | 'admin'): Promise<Session> {
     const result = await request<ApiEnvelope & { session: Session }>('/api/v1/auth/login', {
       method: 'POST',

@@ -19,6 +19,8 @@ export interface BranchUser {
   active: boolean
 }
 
+export type BranchDirectoryEntry = Pick<BranchUser, 'id' | 'code' | 'name' | 'username'>
+
 export interface Receipt {
   name: string
   type: string

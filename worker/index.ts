@@ -62,6 +62,13 @@ interface ExistingReservationRow {
   id: string
 }
 
+interface PublicBranchRow {
+  id: string
+  code: string
+  name: string
+  username: string
+}
+
 function routeId(path: string, expression: RegExp): string | null {
   const match = path.match(expression)
   return match?.[1] ? decodeURIComponent(match[1]) : null
@@ -75,6 +82,16 @@ function sessionPayload(user: Awaited<ReturnType<typeof requireAuth>>): Record<s
   return user.role === 'admin'
     ? { role: 'admin' }
     : { role: 'branch', branchId: user.id }
+}
+
+async function handlePublicBranches(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(
+    `SELECT id, branch_code AS code, branch_name AS name, username
+     FROM users
+     WHERE role = 'branch' AND active = 1
+     ORDER BY branch_code COLLATE NOCASE`,
+  ).all<PublicBranchRow>()
+  return json({ ok: true, branches: result.results })
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
@@ -690,6 +707,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (request.method === 'GET' && path === '/api/v1/health') {
     return json({ ok: true, service: 'jib-pre-interest', serverTime: new Date().toISOString() })
+  }
+  if (request.method === 'GET' && path === '/api/v1/public/branches') {
+    return handlePublicBranches(env)
   }
   if (request.method === 'POST' && path === '/api/v1/auth/login') return handleLogin(request, env)
   if (request.method === 'POST' && path === '/api/v1/auth/logout') return handleLogout(request, env)

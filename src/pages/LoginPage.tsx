@@ -1,7 +1,9 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Brand } from '../components/Common'
+import { api } from '../lib/api'
 import { useAppStore } from '../store/AppStore'
+import type { BranchDirectoryEntry } from '../types'
 
 export function LoginPage() {
   const { state, session, loginAdmin, loginBranch } = useAppStore()
@@ -11,6 +13,35 @@ export function LoginPage() {
   const [identifier, setIdentifier] = useState(remoteMode ? '' : 'JIB-284')
   const [password, setPassword] = useState(remoteMode ? '' : '1234')
   const [error, setError] = useState('')
+  const [branchDirectory, setBranchDirectory] = useState<BranchDirectoryEntry[]>(
+    remoteMode ? [] : state.branches,
+  )
+
+  useEffect(() => {
+    if (!remoteMode) return
+    let active = true
+
+    const refreshDirectory = async () => {
+      try {
+        const branches = await api.branchDirectory()
+        if (active) setBranchDirectory(branches)
+      } catch {
+        // Users can still type their branch code or username if the directory is unavailable.
+      }
+    }
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') void refreshDirectory()
+    }
+
+    void refreshDirectory()
+    window.addEventListener('focus', refreshDirectory)
+    document.addEventListener('visibilitychange', refreshOnVisible)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refreshDirectory)
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+    }
+  }, [remoteMode])
 
   if (session?.role === 'branch') return <Navigate to="/branch" replace />
   if (session?.role === 'admin') return <Navigate to="/admin" replace />
@@ -91,8 +122,10 @@ export function LoginPage() {
               />
               {role === 'branch' && (
                 <datalist id="branch-codes">
-                  {state.branches.map((branch) => (
-                    <option key={branch.id} value={branch.code}>{branch.name}</option>
+                  {branchDirectory.map((branch) => (
+                    <option key={branch.id} value={branch.code}>
+                      {branch.name} · {branch.username}
+                    </option>
                   ))}
                 </datalist>
               )}
