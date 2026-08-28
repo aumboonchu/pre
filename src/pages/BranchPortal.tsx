@@ -79,6 +79,9 @@ function ReservationModal({
           <div>
             <strong>{cleanProductName(product.name)}</strong>
             <span>{product.sku} · {currency(product.price)}</span>
+            <span className={`selected-product__stock ${product.remainingStock > 0 ? 'is-available' : 'is-sold-out'}`}>
+              Stock คงเหลือ {product.remainingStock} เครื่อง
+            </span>
           </div>
           <span className="quantity-pill">จำนวน 1</span>
         </div>
@@ -216,7 +219,12 @@ export function BranchPortal() {
               {products.map((product) => (
                 <article className={`product-card ${product.remainingStock === 0 ? 'product-card--sold' : ''}`} key={product.id}>
                   <div className="product-card__body">
-                    <div className="product-card__meta"><span>{product.sku}</span></div>
+                    <div className="product-card__meta">
+                      <span>{product.sku}</span>
+                      <span className={`stock-pill ${product.remainingStock > 0 ? 'stock-pill--available' : 'stock-pill--sold-out'}`}>
+                        คงเหลือ {product.remainingStock} เครื่อง
+                      </span>
+                    </div>
                     <h3>{cleanProductName(product.name)}</h3>
                     <strong className="price">{currency(product.price)}</strong>
                     <button type="button" className="button button--primary button--full" disabled={product.remainingStock <= 0 || !state.settings.bookingOpen} onClick={() => setSelectedProduct(product)}>

@@ -110,8 +110,11 @@ input:disabled { color: #777; background: #eceeef; }
 .product-card:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(22,24,27,.08); }
 .product-card--sold { opacity: .68; }
 .product-card__body { display: flex; min-height: 190px; flex-direction: column; padding: 18px; }
-.product-card__meta { display: flex; align-items: center; }
+.product-card__meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .product-card__meta > span { color: #8a8e94; font-size: 12px; font-weight: 700; }
+.product-card__meta > .stock-pill { border-radius: 999px; padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+.stock-pill--available { background: #e8f6ec; color: #238246 !important; }
+.stock-pill--sold-out { background: #fdeaea; color: #c62828 !important; }
 .product-card h3 { min-height: 40px; margin: 11px 0 5px; font-size: 16px; line-height: 1.45; }
 .price { display: block; margin-bottom: 16px; color: var(--orange); font-size: 19px; }
 .product-card .button { margin-top: auto; }
@@ -152,6 +155,9 @@ input:disabled { color: #777; background: #eceeef; }
 .selected-product > div:nth-child(2) { display: flex; flex-direction: column; gap: 3px; }
 .selected-product strong { font-size: 15px; }
 .selected-product span { color: var(--muted); font-size: 12px; }
+.selected-product .selected-product__stock { font-weight: 700; }
+.selected-product__stock.is-available { color: #238246; }
+.selected-product__stock.is-sold-out { color: #c62828; }
 .quantity-pill { border-radius: 13px; padding: 5px 8px; background: #fff; color: #222 !important; font-weight: 700; }
 .upload-box { display: flex; min-height: 105px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px dashed #c9cdd1; border-radius: 8px; background: #fafafa; cursor: pointer; }
 .upload-box input { display: none; }
