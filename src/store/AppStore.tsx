@@ -48,6 +48,10 @@ const loadState = (): AppState => {
 }
 
 const loadSession = (): Session => {
+  // In remote mode the HTTP-only cookie is the source of truth. Reusing the
+  // previous tab's session before the matching server state has loaded can
+  // create a /login <-> /branch redirect loop and leave React on a blank page.
+  if (REMOTE_MODE) return null
   try {
     return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') as Session
   } catch {
@@ -83,6 +87,7 @@ const AppStoreContext = createContext<AppStoreValue | null>(null)
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(loadState)
   const [session, setSession] = useState<Session>(loadSession)
+  const [ready, setReady] = useState(!REMOTE_MODE)
   const stateRef = useRef(state)
 
   const commit = useCallback((next: AppState) => {
@@ -93,7 +98,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const updateSession = useCallback((next: Session) => {
     setSession(next)
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(next))
+    try {
+      if (next) sessionStorage.setItem(SESSION_KEY, JSON.stringify(next))
+      else sessionStorage.removeItem(SESSION_KEY)
+    } catch {
+      // The secure cookie still owns the remote session if browser storage is unavailable.
+    }
   }, [])
 
   const refreshRemote = useCallback(async (): Promise<AppState> => {
@@ -138,10 +148,17 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         try {
           const remoteSession = await api.session()
           if (!active) return
-          updateSession(remoteSession)
           await refreshRemote()
+          if (active) updateSession(remoteSession)
         } catch (error) {
-          if (active && error instanceof ApiError && error.status === 401) updateSession(null)
+          if (active) {
+            if (!(error instanceof ApiError) || error.status !== 401) {
+              console.error('Unable to restore the remote session', error)
+            }
+            updateSession(null)
+          }
+        } finally {
+          if (active) setReady(true)
         }
       })()
       return () => {
@@ -181,8 +198,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     async (identifier: string, password: string, role: 'branch' | 'admin'): Promise<boolean> => {
       try {
         const nextSession = await api.login(identifier, password, role)
-        updateSession(nextSession)
         await refreshRemote()
+        updateSession(nextSession)
         return true
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) return false
@@ -502,6 +519,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, resetDemo,
     ],
   )
+
+  if (!ready) {
+    return (
+      <div className="app-loading" role="status" aria-live="polite">
+        <span className="app-loading__mark">JIB</span>
+        <strong>กำลังโหลดระบบ...</strong>
+      </div>
+    )
+  }
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>
 }

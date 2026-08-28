@@ -1,3 +1,6 @@
+.app-loading { display: flex; min-height: 100vh; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #f5f6f7; color: #555a60; font-size: 17px; }
+.app-loading__mark { display: grid; min-width: 72px; height: 46px; place-items: center; border-radius: 8px; background: var(--orange); color: #fff; font-size: 25px; font-weight: 900; letter-spacing: -1px; transform: skew(-7deg); box-shadow: 0 10px 28px rgba(245,124,0,.24); }
+
 .brand { display: flex; align-items: center; gap: 10px; color: #fff; }
 .brand-mark { display: grid; place-items: center; min-width: 52px; height: 34px; padding: 0 8px; border-radius: 6px; background: var(--orange); color: #fff; font-size: 23px; font-weight: 900; letter-spacing: -1px; transform: skew(-7deg); }
 .brand-name { font-size: 21px; font-weight: 800; letter-spacing: -.5px; }
