@@ -6,7 +6,7 @@ import {
   sessionCookie,
   verifyPassword,
 } from './auth'
-import { audit, expireReservations, getState } from './db'
+import { audit, expireReservations, getBookingWindow, getState } from './db'
 import {
   assertSameOrigin,
   errorResponse,
@@ -157,14 +157,7 @@ async function handleState(request: Request, env: Env): Promise<Response> {
 }
 
 async function bookingIsOpen(env: Env, now: number): Promise<boolean> {
-  const result = await env.DB.prepare(
-    `SELECT
-       MAX(CASE WHEN key = 'booking_open' THEN value END) AS booking_open,
-       MAX(CASE WHEN key = 'booking_opens_at' THEN value END) AS booking_opens_at
-     FROM settings`,
-  ).first<{ booking_open: string | null; booking_opens_at: string | null }>()
-  const opensAt = Number(result?.booking_opens_at || 0)
-  return result?.booking_open === '1' && (!opensAt || opensAt <= now)
+  return (await getBookingWindow(env, now)).open
 }
 
 async function handleCreateReservation(request: Request, env: Env): Promise<Response> {
@@ -691,13 +684,53 @@ async function handleBookingSetting(request: Request, env: Env): Promise<Respons
   assertSameOrigin(request)
   const user = await requireAuth(request, env, 'admin')
   const data = await readJsonObject(request, 20_000)
-  const open = requiredBoolean(data, 'bookingOpen')
+  const enabledKey = Object.hasOwn(data, 'bookingEnabled') ? 'bookingEnabled' : 'bookingOpen'
+  const enabled = requiredBoolean(data, enabledKey)
+  const hasSchedule = Object.hasOwn(data, 'opensAt') || Object.hasOwn(data, 'closesAt')
+
+  const parseScheduleTime = (key: 'opensAt' | 'closesAt', label: string): number | null => {
+    const value = data[key]
+    if (value === null || value === '') return null
+    if (typeof value !== 'string') {
+      throw new HttpError(400, 'VALIDATION_ERROR', `${label}ไม่ถูกต้อง`)
+    }
+    const parsed = Date.parse(value)
+    if (!Number.isFinite(parsed)) {
+      throw new HttpError(400, 'VALIDATION_ERROR', `${label}ไม่ถูกต้อง`)
+    }
+    return parsed
+  }
+
+  const opensAt = hasSchedule ? parseScheduleTime('opensAt', 'เวลาเปิดรับจอง') : null
+  const closesAt = hasSchedule ? parseScheduleTime('closesAt', 'เวลาปิดรับจอง') : null
+  if (opensAt && closesAt && closesAt <= opensAt) {
+    throw new HttpError(400, 'INVALID_BOOKING_WINDOW', 'เวลาปิดรับจองต้องอยู่หลังเวลาเปิดรับจอง')
+  }
+
   const now = Date.now()
-  await env.DB.prepare(
-    `INSERT INTO settings (key, value, updated_at) VALUES ('booking_open', ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-  ).bind(open ? '1' : '0', now).run()
-  await audit(env, user.id, 'booking.setting.changed', 'setting', 'booking_open', { open }, now)
+  const statements = [
+    env.DB.prepare(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('booking_open', ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    ).bind(enabled ? '1' : '0', now),
+  ]
+  if (hasSchedule) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('booking_opens_at', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      ).bind(opensAt ? String(opensAt) : '', now),
+      env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES ('booking_closes_at', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      ).bind(closesAt ? String(closesAt) : '', now),
+    )
+  }
+  await env.DB.batch(statements)
+  await audit(env, user.id, 'booking.setting.changed', 'setting', 'booking_window', {
+    enabled,
+    ...(hasSchedule ? { opensAt, closesAt, timeZone: 'Asia/Bangkok' } : {}),
+  }, now)
   return json({ ok: true })
 }
 

@@ -87,5 +87,12 @@ export const createSeedState = (): AppState => ({
   branches: structuredClone(seedBranches),
   reservations: [],
   admin: { username: 'admin', password: '1234' },
-  settings: { bookingOpen: true, opensAtLabel: '20:00 น. (เวลา Server)' },
+  settings: {
+    bookingEnabled: true,
+    bookingOpen: true,
+    opensAt: null,
+    closesAt: null,
+    opensAtLabel: 'เปิดรับจองทันที',
+    timeZone: 'Asia/Bangkok',
+  },
 })

@@ -20,6 +20,7 @@ import {
 } from '../lib/reservationEngine'
 import type {
   AppState,
+  BookingScheduleInput,
   BranchUser,
   Product,
   Receipt,
@@ -79,6 +80,7 @@ interface AppStoreValue {
   importBranches: (branches: BranchUser[]) => Promise<void>
   deleteBranches: (branchIds?: string[]) => Promise<number>
   setBookingOpen: (open: boolean) => Promise<void>
+  setBookingSchedule: (schedule: BookingScheduleInput) => Promise<void>
   resetDemo: () => Promise<void>
 }
 
@@ -493,7 +495,42 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         await refreshRemote()
         return
       }
-      commit({ ...stateRef.current, settings: { ...stateRef.current.settings, bookingOpen: open } })
+      commit({
+        ...stateRef.current,
+        settings: {
+          ...stateRef.current.settings,
+          bookingEnabled: open,
+          bookingOpen: open &&
+            (!stateRef.current.settings.opensAt || Date.parse(stateRef.current.settings.opensAt) <= Date.now()) &&
+            (!stateRef.current.settings.closesAt || Date.now() < Date.parse(stateRef.current.settings.closesAt)),
+        },
+      })
+    },
+    [commit, refreshRemote],
+  )
+
+  const setBookingSchedule = useCallback(
+    async (schedule: BookingScheduleInput) => {
+      if (REMOTE_MODE) {
+        await api.setBookingSchedule(schedule)
+        await refreshRemote()
+        return
+      }
+      const now = Date.now()
+      const opensAt = schedule.opensAt ? Date.parse(schedule.opensAt) : null
+      const closesAt = schedule.closesAt ? Date.parse(schedule.closesAt) : null
+      const bookingOpen = schedule.bookingEnabled &&
+        (!opensAt || opensAt <= now) &&
+        (!closesAt || now < closesAt)
+      commit({
+        ...stateRef.current,
+        settings: {
+          ...stateRef.current.settings,
+          ...schedule,
+          bookingOpen,
+          opensAtLabel: bookingOpen ? 'เปิดรับจองตามกำหนด' : 'ปิดรับจองตามกำหนด',
+        },
+      })
     },
     [commit, refreshRemote],
   )
@@ -511,12 +548,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     }),
     [
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, changePassword, resetBranchPassword, upsertProduct,
-      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, resetDemo,
+      importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     ],
   )
 

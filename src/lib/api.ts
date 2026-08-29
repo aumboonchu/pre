@@ -1,5 +1,6 @@
 import type {
   AppState,
+  BookingScheduleInput,
   BranchDirectoryEntry,
   BranchUser,
   Product,
@@ -185,6 +186,13 @@ export const api = {
     await request('/api/v1/admin/settings/booking', {
       method: 'POST',
       body: JSON.stringify({ bookingOpen }),
+    })
+  },
+
+  async setBookingSchedule(schedule: BookingScheduleInput): Promise<void> {
+    await request('/api/v1/admin/settings/booking', {
+      method: 'POST',
+      body: JSON.stringify(schedule),
     })
   },
 }

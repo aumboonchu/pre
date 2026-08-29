@@ -1,13 +1,53 @@
 import { type ChangeEvent, type FormEvent, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Brand, EmptyState, Modal, StatusBadge, Toast } from '../components/Common'
+import { Brand, ClockIcon, EmptyState, Modal, PackageIcon, StatusBadge, Toast } from '../components/Common'
 import { useToast } from '../hooks/useToast'
-import { readBranchesExcel, readProductsExcel } from '../lib/excel'
+import { exportReservationsExcel, readBranchesExcel, readProductsExcel } from '../lib/excel'
 import { cleanProductName, currency, dateTime } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
-import type { BranchUser, Product, ReservationStatus } from '../types'
+import type { BranchUser, Product, Reservation, ReservationStatus } from '../types'
 
-type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'password'
+type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'schedule' | 'password'
+
+const bangkokInputValue = (iso: string | null) => {
+  if (!iso) return ''
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: 'Asia/Bangkok',
+  }).formatToParts(new Date(iso))
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`
+}
+
+const bangkokInputToIso = (value: string) => {
+  if (!value) return null
+  const withSeconds = value.length === 16 ? `${value}:00` : value
+  return new Date(`${withSeconds}+07:00`).toISOString()
+}
+
+function ReceiptViewer({ reservation, onClose }: { reservation: Reservation; onClose: () => void }) {
+  const receipt = reservation.receipt
+  if (!receipt) return null
+  const browserPreview = receipt.type !== 'image/heic' && receipt.type !== 'image/heif'
+  return (
+    <Modal title={`ใบเสร็จ ${reservation.id}`} onClose={onClose} wide>
+      <div className="receipt-viewer">
+        {browserPreview
+          ? <img src={receipt.dataUrl} alt={`ใบเสร็จ ${reservation.id}`} />
+          : <div className="receipt-viewer__fallback"><strong>ไฟล์ {receipt.type.toUpperCase()}</strong><span>Browser อาจไม่รองรับการแสดงตัวอย่างไฟล์นี้</span></div>}
+        <div className="receipt-viewer__footer">
+          <span>{receipt.name} · อัปโหลด {dateTime(receipt.uploadedAt)}</span>
+          <a className="button button--outline" href={receipt.dataUrl} target="_blank" rel="noreferrer">เปิดไฟล์ต้นฉบับ</a>
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 function ProductEditor({ product, onClose, onSaved }: { product?: Product; onClose: () => void; onSaved: () => void }) {
   const { upsertProduct } = useAppStore()
@@ -111,6 +151,7 @@ export function AdminPortal() {
     deleteBranches,
     resetBranchPassword,
     setBookingOpen,
+    setBookingSchedule,
     changePassword,
   } = useAppStore()
   const { toast, showToast } = useToast()
@@ -124,6 +165,11 @@ export function AdminPortal() {
   const [deletingProducts, setDeletingProducts] = useState(false)
   const [selectedBranchIds, setSelectedBranchIds] = useState<Set<string>>(() => new Set())
   const [deletingBranches, setDeletingBranches] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState<Reservation | null>(null)
+  const [scheduleEnabled, setScheduleEnabled] = useState(state.settings.bookingEnabled)
+  const [scheduleOpensAt, setScheduleOpensAt] = useState(() => bangkokInputValue(state.settings.opensAt))
+  const [scheduleClosesAt, setScheduleClosesAt] = useState(() => bangkokInputValue(state.settings.closesAt))
+  const [savingSchedule, setSavingSchedule] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -268,9 +314,42 @@ export function AdminPortal() {
   const changeBookingSetting = async (open: boolean) => {
     try {
       await setBookingOpen(open)
+      setScheduleEnabled(open)
       showToast(open ? 'เปิดรับจองแล้ว' : 'ปิดรับจองแล้ว')
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'เปลี่ยนสถานะระบบไม่สำเร็จ', 'error')
+    }
+  }
+
+  const handleSchedule = async (event: FormEvent) => {
+    event.preventDefault()
+    const opensAt = bangkokInputToIso(scheduleOpensAt)
+    const closesAt = bangkokInputToIso(scheduleClosesAt)
+    if (opensAt && closesAt && Date.parse(closesAt) <= Date.parse(opensAt)) {
+      showToast('เวลาปิดรับจองต้องอยู่หลังเวลาเปิดรับจอง', 'error')
+      return
+    }
+    setSavingSchedule(true)
+    try {
+      await setBookingSchedule({ bookingEnabled: scheduleEnabled, opensAt, closesAt })
+      showToast('บันทึกเวลาเปิด–ปิดรับจองเรียบร้อย')
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'บันทึกเวลาไม่สำเร็จ', 'error')
+    } finally {
+      setSavingSchedule(false)
+    }
+  }
+
+  const handleReservationExport = async () => {
+    if (filteredReservations.length === 0) {
+      showToast('ไม่มีข้อมูลตามตัวกรองสำหรับ Export', 'error')
+      return
+    }
+    try {
+      await exportReservationsExcel(filteredReservations, state.products, state.branches)
+      showToast(`Export ข้อมูล ${filteredReservations.length} รายการเรียบร้อย`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Export Excel ไม่สำเร็จ', 'error')
     }
   }
 
@@ -300,6 +379,15 @@ export function AdminPortal() {
     }
   }
 
+  const tabTitle: Record<AdminTab, string> = {
+    overview: 'ภาพรวมระบบ',
+    reservations: 'ตรวจสอบการจอง',
+    products: 'สินค้าและ Stock',
+    users: 'ผู้ใช้รายสาขา',
+    schedule: 'ตั้งเวลาเปิด–ปิดรับจอง',
+    password: 'เปลี่ยนรหัสผ่าน',
+  }
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
@@ -308,8 +396,9 @@ export function AdminPortal() {
         <nav>
           <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}><span>▦</span> Dashboard</button>
           <button className={tab === 'reservations' ? 'active' : ''} onClick={() => setTab('reservations')}><span>✓</span> ตรวจสอบการจอง <b>{waiting}</b></button>
-          <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><span>□</span> สินค้าและ Stock</button>
+          <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><span><PackageIcon /></span> สินค้าและ Stock</button>
           <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}><span>♙</span> ผู้ใช้สาขา</button>
+          <button className={tab === 'schedule' ? 'active' : ''} onClick={() => setTab('schedule')}><span><ClockIcon /></span> ตั้งเวลาเปิด–ปิด</button>
           <button className={tab === 'password' ? 'active' : ''} onClick={() => setTab('password')}><span>⌘</span> เปลี่ยน Password</button>
         </nav>
         <div className="admin-sidebar__safety"><strong>Stock-safe mode</strong><span>Atomic transaction</span><span>Idempotency key</span><span>72h stock restore</span></div>
@@ -318,9 +407,9 @@ export function AdminPortal() {
 
       <div className="admin-main">
         <header className="admin-topbar">
-          <div><span className="eyebrow eyebrow--orange">HQ / OPERATIONS PORTAL</span><h1>{tab === 'overview' ? 'ภาพรวมระบบ' : tab === 'reservations' ? 'ตรวจสอบการจอง' : tab === 'products' ? 'สินค้าและ Stock' : tab === 'users' ? 'ผู้ใช้รายสาขา' : 'เปลี่ยนรหัสผ่าน'}</h1></div>
+          <div><span className="eyebrow eyebrow--orange">HQ / OPERATIONS PORTAL</span><h1>{tabTitle[tab]}</h1></div>
           <div className="admin-topbar__actions">
-            <label className="system-switch"><span><strong>{state.settings.bookingOpen ? 'ระบบเปิดรับจอง' : 'ระบบปิดรับจอง'}</strong><small>{state.settings.opensAtLabel}</small></span><input type="checkbox" checked={state.settings.bookingOpen} onChange={(event) => void changeBookingSetting(event.target.checked)} /></label>
+            <label className="system-switch"><span><strong>{state.settings.bookingOpen ? 'ระบบเปิดรับจอง' : 'ระบบปิดรับจอง'}</strong><small>{state.settings.opensAtLabel}</small></span><input type="checkbox" checked={state.settings.bookingEnabled} onChange={(event) => void changeBookingSetting(event.target.checked)} /></label>
             <div className="admin-avatar">A</div>
           </div>
         </header>
@@ -351,14 +440,17 @@ export function AdminPortal() {
                   {state.reservations.length === 0 ? <EmptyState title="ยังไม่มีรายการ" description="รายการใหม่จากสาขาจะปรากฏที่นี่" /> : <div className="compact-table">{state.reservations.slice(0, 6).map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <div key={reservation.id}><span><strong>{reservation.id}</strong><small>{dateTime(reservation.createdAt)}</small></span><span>{branch?.code}<small>{branch?.name}</small></span><span>{product ? cleanProductName(product.name) : reservation.productId}</span><StatusBadge status={reservation.status} /></div>})}</div>}
                 </article>
               </section>
-              <section className="safeguard-banner"><div><span>⚡</span><div><strong>Race Condition Defenses พร้อมทำงานจริง</strong><p>Database หัก Stock แบบ Atomic และบังคับ Unique Idempotency Key จึงไม่รับจองเกินแม้สาขากดพร้อมกัน</p></div></div><div className="safeguard-tags"><span>Atomic Stock</span><span>Idempotency</span><span>Server Time 20:00</span><span>72h Restore</span></div></section>
+              <section className="safeguard-banner"><div><span>⚡</span><div><strong>Race Condition Defenses พร้อมทำงานจริง</strong><p>Database หัก Stock แบบ Atomic และบังคับ Unique Idempotency Key จึงไม่รับจองเกินแม้สาขากดพร้อมกัน</p></div></div><div className="safeguard-tags"><span>Atomic Stock</span><span>Idempotency</span><span>Scheduled Window</span><span>72h Restore</span></div></section>
             </>
           )}
 
           {tab === 'reservations' && (
             <>
-              <div className="section-toolbar"><div className="filter-tabs">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={reservationFilter === status ? 'active' : ''} onClick={() => setReservationFilter(status)}>{status}{status === 'Waiting for Approved' && <b>{waiting}</b>}</button>)}</div><span>แสดง {filteredReservations.length} รายการ</span></div>
-              {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : <section className="review-grid">{filteredReservations.map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <article className="review-card" key={reservation.id}><div className="review-card__receipt">{reservation.receipt && reservation.receipt.type !== 'image/heic' ? <img src={reservation.receipt.dataUrl} alt={`ใบเสร็จ ${reservation.id}`} /> : <div><span>▧</span><strong>{reservation.receipt ? 'HEIC receipt' : 'ยังไม่มีใบเสร็จ'}</strong><small>{reservation.receipt?.name ?? 'รออัปโหลดภายใน 72 ชม.'}</small></div>}</div><div className="review-card__body"><div className="review-card__heading"><div><span className="eyebrow">{reservation.id}</span><h3>{product ? cleanProductName(product.name) : reservation.productId}</h3><p>{product?.sku}</p></div><StatusBadge status={reservation.status} /></div><dl><div><dt>สาขา</dt><dd>{branch?.name}<small>{branch?.code}</small></dd></div><div><dt>ลูกค้า</dt><dd>{reservation.customerName}<small>{reservation.customerPhone}</small></dd></div><div><dt>วันที่จอง</dt><dd>{dateTime(reservation.createdAt)}</dd></div></dl>{reservation.status === 'Waiting for Approved' && <div className="review-card__actions"><button className="button button--danger" onClick={() => rejectItem(reservation.id)} disabled={!reservation.receipt}>ไม่อนุมัติ</button><button className="button button--success" onClick={() => approveItem(reservation.id)} disabled={!reservation.receipt}>อนุมัติ / ยืนยัน</button></div>}{!reservation.receipt && reservation.status === 'Waiting for Approved' && <p className="review-hint">ยังดำเนินการไม่ได้จนกว่าสาขาจะอัปโหลดใบเสร็จ</p>}</div></article>})}</section>}
+              <div className="section-toolbar">
+                <div className="filter-tabs">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={reservationFilter === status ? 'active' : ''} onClick={() => setReservationFilter(status)}>{status}{status === 'Waiting for Approved' && <b>{waiting}</b>}</button>)}</div>
+                <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
+              </div>
+              {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : <section className="review-grid">{filteredReservations.map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <article className="review-card" key={reservation.id}><div className="review-card__receipt"><div><span className={reservation.receipt ? 'receipt-status-icon receipt-status-icon--ready' : 'receipt-status-icon'}>▧</span><strong>{reservation.receipt ? 'แนบใบเสร็จแล้ว' : 'ยังไม่มีใบเสร็จ'}</strong><small>{reservation.receipt?.name ?? 'รออัปโหลดภายใน 72 ชม.'}</small>{reservation.receipt && <button type="button" className="button button--outline" onClick={() => setSelectedReceipt(reservation)}>ดูใบเสร็จ</button>}</div></div><div className="review-card__body"><div className="review-card__heading"><div><span className="eyebrow">{reservation.id}</span><h3>{product ? cleanProductName(product.name) : reservation.productId}</h3><p>{product?.sku}</p></div><StatusBadge status={reservation.status} /></div><dl><div><dt>สาขา</dt><dd>{branch?.name}<small>{branch?.code}</small></dd></div><div><dt>ลูกค้า</dt><dd>{reservation.customerName}<small>{reservation.customerPhone}</small></dd></div><div><dt>วันที่จอง</dt><dd>{dateTime(reservation.createdAt)}</dd></div></dl>{reservation.status === 'Waiting for Approved' && <div className="review-card__actions"><button className="button button--danger" onClick={() => rejectItem(reservation.id)} disabled={!reservation.receipt}>ไม่อนุมัติ</button><button className="button button--success" onClick={() => approveItem(reservation.id)} disabled={!reservation.receipt}>อนุมัติ / ยืนยัน</button></div>}{!reservation.receipt && reservation.status === 'Waiting for Approved' && <p className="review-hint">ยังดำเนินการไม่ได้จนกว่าสาขาจะอัปโหลดใบเสร็จ</p>}</div></article>})}</section>}
             </>
           )}
 
@@ -374,6 +466,25 @@ export function AdminPortal() {
               <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions toolbar-actions--bulk"><button className="button button--danger-ghost" disabled={selectedBranchIds.size === 0 || deletingBranches} onClick={() => void handleDeleteBranches('selected')}>ลบที่เลือก ({selectedBranchIds.size})</button><button className="button button--danger" disabled={state.branches.length === 0 || deletingBranches} onClick={() => void handleDeleteBranches('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
               <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>เลือก checkbox เพื่อลบบางบัญชี หรือใช้ปุ่มลบทั้งหมด · สาขาที่มีประวัติการจองจะลบไม่ได้</span></div><div className="data-table data-table--users"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกผู้ใช้สาขาที่แสดงทั้งหมด" checked={filteredBranches.length > 0 && filteredBranches.every((branch) => selectedBranchIds.has(branch.id))} onChange={(event) => toggleVisibleBranches(event.target.checked)} /></span><span>สาขา</span><span>Username</span><span>สถานะ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${branch.code}`} checked={selectedBranchIds.has(branch.id)} onChange={(event) => toggleBranch(branch.id, event.target.checked)} /></span><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span><i className={branch.active ? 'active-pill' : 'inactive-pill'}>{branch.active ? 'ใช้งานอยู่' : 'ระงับ'}</i></span><span className="row-actions"><button className="text-button" onClick={() => setEditingBranch(branch)}>แก้ไข</button><button className="text-button text-button--orange" onClick={() => void resetPassword(branch)}>Reset 1234</button><button className="text-button text-button--red" onClick={() => void handleDeleteBranches('selected', [branch.id])}>ลบ</button></span></div>)}</div></div>
             </>
+          )}
+
+          {tab === 'schedule' && (
+            <section className="settings-layout schedule-layout">
+              <form className="settings-card form-stack" onSubmit={handleSchedule}>
+                <div className="settings-card__intro"><div className="security-icon"><ClockIcon /></div><div><h2>ช่วงเวลาเปิดรับจอง</h2><p>เวลาอ้างอิงประเทศไทย (Asia/Bangkok)</p></div></div>
+                <div className={`booking-window-status ${state.settings.bookingOpen ? 'booking-window-status--open' : ''}`}>
+                  <span>{state.settings.bookingOpen ? 'เปิดรับจองอยู่' : 'ปิดรับจองอยู่'}</span>
+                  <strong>{state.settings.opensAtLabel}</strong>
+                </div>
+                <label className="toggle-row"><span><strong>เปิดใช้งานระบบรับจอง</strong><small>เป็น Master Control และยังต้องอยู่ภายในช่วงเวลาที่กำหนด</small></span><input type="checkbox" checked={scheduleEnabled} onChange={(event) => setScheduleEnabled(event.target.checked)} /></label>
+                <div className="form-grid">
+                  <label><span>วันที่และเวลาเปิด</span><input type="datetime-local" value={scheduleOpensAt} onChange={(event) => setScheduleOpensAt(event.target.value)} /></label>
+                  <label><span>วันที่และเวลาปิด</span><input type="datetime-local" value={scheduleClosesAt} onChange={(event) => setScheduleClosesAt(event.target.value)} /></label>
+                </div>
+                <div className="notice notice--warning"><strong>เมื่อถึงเวลาปิด ระบบจะหยุดรับเฉพาะรายการใหม่</strong><span>รายการเดิมยังอัปโหลดใบเสร็จ ยกเลิก และตรวจสอบได้ตามปกติ · Server ตรวจเวลาอีกครั้งตอน Submit</span></div>
+                <div className="modal__actions"><button type="button" className="button button--ghost" onClick={() => { setScheduleOpensAt(''); setScheduleClosesAt('') }}>ล้างเวลาที่กำหนด</button><button type="submit" className="button button--primary" disabled={savingSchedule}>{savingSchedule ? 'กำลังบันทึก…' : 'บันทึกเวลาเปิด–ปิด'}</button></div>
+              </form>
+            </section>
           )}
 
           {tab === 'password' && (
@@ -410,6 +521,7 @@ export function AdminPortal() {
           }}
         />
       )}
+      {selectedReceipt && <ReceiptViewer reservation={selectedReceipt} onClose={() => setSelectedReceipt(null)} />}
       {toast && <Toast {...toast} />}
     </div>
   )

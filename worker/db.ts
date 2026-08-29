@@ -41,6 +41,53 @@ interface SettingRow {
   value: string
 }
 
+export interface BookingWindow {
+  enabled: boolean
+  open: boolean
+  opensAt: number | null
+  closesAt: number | null
+  label: string
+}
+
+function timestamp(value: string | undefined): number | null {
+  const parsed = Number(value || 0)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function bangkokDateTime(value: number): string {
+  return new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Bangkok',
+  }).format(new Date(value))
+}
+
+export function evaluateBookingWindow(
+  settings: ReadonlyMap<string, string>,
+  now: number,
+): BookingWindow {
+  const enabled = settings.get('booking_open') === '1'
+  const opensAt = timestamp(settings.get('booking_opens_at'))
+  const closesAt = timestamp(settings.get('booking_closes_at'))
+  const open = enabled && (!opensAt || opensAt <= now) && (!closesAt || now < closesAt)
+
+  let label = 'ปิดรับจองโดย Admin'
+  if (enabled && opensAt && now < opensAt) label = `เปิด ${bangkokDateTime(opensAt)} น.`
+  else if (enabled && closesAt && now >= closesAt) label = `สิ้นสุด ${bangkokDateTime(closesAt)} น.`
+  else if (open && closesAt) label = `ปิด ${bangkokDateTime(closesAt)} น.`
+  else if (open) label = 'เปิดรับจองทันที'
+
+  return { enabled, open, opensAt, closesAt, label }
+}
+
+export async function getBookingWindow(env: Env, now: number): Promise<BookingWindow> {
+  const result = await env.DB.prepare(
+    `SELECT key, value FROM settings
+     WHERE key IN ('booking_open', 'booking_opens_at', 'booking_closes_at')`,
+  ).all<SettingRow>()
+  return evaluateBookingWindow(new Map(result.results.map((row) => [row.key, row.value])), now)
+}
+
 export async function expireReservations(env: Env, now: number): Promise<number> {
   const result = await env.DB.prepare(
     `UPDATE reservations
@@ -72,9 +119,7 @@ export async function getState(env: Env, user: AuthUser): Promise<Record<string,
   ])
 
   const settings = new Map(settingResult.results.map((row) => [row.key, row.value]))
-  const bookingOpen = settings.get('booking_open') === '1'
-  const opensAt = Number(settings.get('booking_opens_at') || 0)
-  const effectiveOpen = bookingOpen && (!opensAt || opensAt <= Date.now())
+  const bookingWindow = evaluateBookingWindow(settings, Date.now())
 
   return {
     schemaVersion: 1,
@@ -118,8 +163,12 @@ export async function getState(env: Env, user: AuthUser): Promise<Record<string,
     })),
     admin: { username: 'admin', password: '' },
     settings: {
-      bookingOpen: effectiveOpen,
-      opensAtLabel: settings.get('booking_label') ?? '20:00 น. (เวลา Server)',
+      bookingEnabled: bookingWindow.enabled,
+      bookingOpen: bookingWindow.open,
+      opensAt: bookingWindow.opensAt ? new Date(bookingWindow.opensAt).toISOString() : null,
+      closesAt: bookingWindow.closesAt ? new Date(bookingWindow.closesAt).toISOString() : null,
+      opensAtLabel: bookingWindow.label,
+      timeZone: 'Asia/Bangkok',
     },
   }
 }

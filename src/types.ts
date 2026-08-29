@@ -53,9 +53,19 @@ export interface AppState {
     password: string
   }
   settings: {
+    bookingEnabled: boolean
     bookingOpen: boolean
+    opensAt: string | null
+    closesAt: string | null
     opensAtLabel: string
+    timeZone: 'Asia/Bangkok'
   }
+}
+
+export interface BookingScheduleInput {
+  bookingEnabled: boolean
+  opensAt: string | null
+  closesAt: string | null
 }
 
 export interface ReservationInput {
