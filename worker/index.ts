@@ -18,6 +18,9 @@ import {
   requiredNumber,
   requiredString,
 } from './http'
+import { SessionNotifier } from './session-notifier'
+
+export { SessionNotifier } from './session-notifier'
 
 const DEFAULT_PASSWORD_SALT = 'HwEOBdokadDPVZ0tZceMlw=='
 const DEFAULT_PASSWORD_HASH = 'Ud8T+IAyiTIu9ce0owZT8bxx9yLxtDaYaBXuzLqFgQ4='
@@ -138,6 +141,14 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   }
   const now = Date.now()
   const { user, token } = await login(env, identifier, password, role, now)
+  try {
+    const notifier = env.SESSION_NOTIFIER.getByName(`session:${user.id}`) as DurableObjectStub<SessionNotifier>
+    await notifier.invalidate()
+  } catch (error) {
+    // The database check still blocks the old session if realtime delivery is
+    // temporarily unavailable. Do not leave a successful login unusable.
+    console.error('Unable to notify the replaced session', error)
+  }
   await audit(env, user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
   return json(
     { ok: true, session: sessionPayload(user) },
@@ -162,6 +173,14 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
     { ok: true },
     { headers: { 'set-cookie': clearSessionCookie(request) } },
   )
+}
+
+async function handleSessionEvents(request: Request, env: Env): Promise<Response> {
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+    throw new HttpError(426, 'UPGRADE_REQUIRED', 'ต้องเชื่อมต่อแบบ WebSocket')
+  }
+  const user = await requireAuth(request, env)
+  return env.SESSION_NOTIFIER.getByName(`session:${user.id}`).fetch(request)
 }
 
 async function handleChangePassword(request: Request, env: Env): Promise<Response> {
@@ -821,6 +840,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === 'POST' && path === '/api/v1/auth/login') return handleLogin(request, env)
   if (request.method === 'POST' && path === '/api/v1/auth/logout') return handleLogout(request, env)
+  if (request.method === 'GET' && path === '/api/v1/auth/session-events') {
+    return handleSessionEvents(request, env)
+  }
   if (request.method === 'GET' && path === '/api/v1/auth/session') {
     const user = await requireAuth(request, env)
     return json({ ok: true, session: sessionPayload(user) })

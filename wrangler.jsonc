@@ -17,6 +17,20 @@
       "migrations_dir": "./migrations"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SESSION_NOTIFIER",
+        "class_name": "SessionNotifier"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SessionNotifier"]
+    }
+  ],
   "kv_namespaces": [
     {
       "binding": "RECEIPTS",

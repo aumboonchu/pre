@@ -211,6 +211,47 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshRemote, session, updateSession])
 
+  useEffect(() => {
+    if (!REMOTE_MODE || !session) return
+    let stopped = false
+    let retry: number | undefined
+    let socket: WebSocket | null = null
+
+    const clearForReplacedSession = () => updateSession(null)
+    const connect = () => {
+      if (stopped) return
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      socket = new WebSocket(`${protocol}//${window.location.host}/api/v1/auth/session-events`)
+      socket.addEventListener('message', (event) => {
+        try {
+          if ((JSON.parse(String(event.data)) as { type?: string }).type === 'session-replaced') {
+            clearForReplacedSession()
+          }
+        } catch {
+          // Ignore malformed realtime messages. The regular server check remains active.
+        }
+      })
+      socket.addEventListener('close', (event) => {
+        if (stopped) return
+        if (event.code === 4001 || event.reason === 'SESSION_REPLACED') {
+          clearForReplacedSession()
+          return
+        }
+        void api.session().catch((error: unknown) => {
+          if (error instanceof ApiError && error.status === 401) clearForReplacedSession()
+        })
+        retry = window.setTimeout(connect, 5_000)
+      })
+    }
+
+    connect()
+    return () => {
+      stopped = true
+      if (retry !== undefined) window.clearTimeout(retry)
+      socket?.close(1000, 'SESSION_CLEANUP')
+    }
+  }, [session, updateSession])
+
   const remoteLogin = useCallback(
     async (identifier: string, password: string, role: 'branch' | 'admin'): Promise<boolean> => {
       try {
