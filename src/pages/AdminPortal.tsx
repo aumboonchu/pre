@@ -500,18 +500,17 @@ export function AdminPortal() {
                           <div className="review-card__receipt-summary">
                             <i aria-hidden="true" />
                             <strong>{reservation.receipt ? 'แนบใบเสร็จแล้ว' : 'ยังไม่แนบใบเสร็จ'}</strong>
-                            <small title={reservation.receipt?.name}>{reservation.receipt?.name ?? 'รออัปโหลดภายใน 72 ชม.'}</small>
+                            <small title={reservation.receipt?.name}>{reservation.receipt?.name ?? 'อนุมัติได้ แม้ไม่มีหลักฐานมัดจำ'}</small>
                           </div>
                           <div className="review-card__actions">
                             {reservation.receipt && <button type="button" className="button button--outline" onClick={() => setSelectedReceipt(reservation)}>ดูใบเสร็จ</button>}
                             {reservation.status === 'Waiting for Approved' && <>
-                              <button className="button button--danger-ghost" onClick={() => rejectItem(reservation.id)} disabled={!reservation.receipt}>ไม่อนุมัติ</button>
-                              <button className="button button--success" onClick={() => approveItem(reservation.id)} disabled={!reservation.receipt}>อนุมัติ</button>
+                              <button className="button button--danger-ghost" onClick={() => rejectItem(reservation.id)}>ไม่อนุมัติ</button>
+                              <button className="button button--success" onClick={() => approveItem(reservation.id)}>อนุมัติ</button>
                             </>}
                           </div>
                         </div>
 
-                        {!reservation.receipt && reservation.status === 'Waiting for Approved' && <p className="review-hint">รอใบเสร็จก่อนจึงจะอนุมัติรายการได้</p>}
                       </article>
                     )
                   })}

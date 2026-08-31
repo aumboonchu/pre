@@ -364,7 +364,7 @@ async function handleAdminReservationStatus(
   const result = status === 'Confirmed'
     ? await env.DB.prepare(
         `UPDATE reservations SET status = 'Confirmed', updated_at = ?
-         WHERE id = ? AND status = 'Waiting for Approved' AND receipt_key IS NOT NULL`,
+         WHERE id = ? AND status = 'Waiting for Approved'`,
       ).bind(now, reservationId).run()
     : await env.DB.prepare(
         `UPDATE reservations SET status = 'Cancel', cancel_reason = 'Admin ไม่อนุมัติ', updated_at = ?
@@ -372,7 +372,7 @@ async function handleAdminReservationStatus(
       ).bind(now, reservationId).run()
   if (result.meta.changes === 0) {
     throw new HttpError(409, 'STATUS_CONFLICT', status === 'Confirmed'
-      ? 'ต้องมีใบเสร็จและอยู่ในสถานะรอตรวจสอบก่อนอนุมัติ'
+      ? 'รายการไม่อยู่ในสถานะรอตรวจสอบก่อนอนุมัติ'
       : 'รายการนี้ถูกยกเลิกแล้ว')
   }
   await audit(env, user.id, `reservation.${status === 'Confirmed' ? 'confirmed' : 'rejected'}`, 'reservation', reservationId, null, now)
