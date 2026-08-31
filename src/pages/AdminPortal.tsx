@@ -341,6 +341,8 @@ export function AdminPortal() {
     }
   }
 
+  const clearReservationSelection = () => setSelectedReservationIds(new Set())
+
   const approveItem = async (id: string) => {
     try {
       await approve(id)
@@ -499,8 +501,9 @@ export function AdminPortal() {
             <>
               <div className="section-toolbar">
                 <div className="filter-tabs">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={reservationFilter === status ? 'active' : ''} onClick={() => setReservationFilter(status)}>{status}{status === 'Waiting for Approved' && <b>{waiting}</b>}</button>)}</div>
-                <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--danger-ghost" disabled={selectedReservationIds.size === 0 || deletingReservations} onClick={() => void deleteSelectedReservations()}>ลบที่เลือก ({selectedReservationIds.size})</button><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
+                <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
               </div>
+              {selectedReservationIds.size > 0 && <div className="reservation-bulk-bar"><strong>เลือกแล้ว {selectedReservationIds.size} รายการ</strong><div><button type="button" className="reservation-bulk-bar__clear" onClick={clearReservationSelection}>ยกเลิกการเลือก</button><button type="button" className="reservation-bulk-bar__delete" disabled={deletingReservations} onClick={() => void deleteSelectedReservations()}>{deletingReservations ? 'กำลังลบ…' : `ลบ ${selectedReservationIds.size} รายการ`}</button></div></div>}
               {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : (
                 <section className="review-grid">
                   {filteredReservations.map((reservation) => {
@@ -508,14 +511,14 @@ export function AdminPortal() {
                     const product = state.products.find((item) => item.id === reservation.productId)
 
                     return (
-                      <article className="review-card" key={reservation.id}>
+                      <article className={`review-card ${selectedReservationIds.has(reservation.id) ? 'review-card--selected' : ''}`} key={reservation.id}>
                         <div className="review-card__heading">
                           <div>
                             <span className="eyebrow">{reservation.id}</span>
                             <h3>{product ? cleanProductName(product.name) : reservation.productId}</h3>
                             <p>{product?.sku}</p>
                           </div>
-                          <div className="review-card__selection"><StatusBadge status={reservation.status} /><label title="เลือกรายการนี้"><input type="checkbox" aria-label={`เลือก ${reservation.id}`} checked={selectedReservationIds.has(reservation.id)} onChange={(event) => toggleReservation(reservation.id, event.target.checked)} /></label></div>
+                          <div className="review-card__selection"><StatusBadge status={reservation.status} /><button type="button" className={selectedReservationIds.has(reservation.id) ? 'review-card__select review-card__select--active' : 'review-card__select'} aria-pressed={selectedReservationIds.has(reservation.id)} onClick={() => toggleReservation(reservation.id, !selectedReservationIds.has(reservation.id))}>{selectedReservationIds.has(reservation.id) ? '✓ เลือกแล้ว' : 'เลือก'}</button></div>
                         </div>
 
                         <dl>

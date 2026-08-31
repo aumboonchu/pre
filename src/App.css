@@ -256,6 +256,7 @@ input:disabled { color: #777; background: #eceeef; }
 .filter-tabs button.active { border-color: #e2e4e6; background: #fff; color: #1f2226; }
 .review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .review-card { display: flex; min-width: 0; overflow: hidden; flex-direction: column; gap: 14px; border: 1px solid #e1e3e6; border-radius: 12px; padding: 18px 20px 16px; background: #fff; box-shadow: 0 3px 12px rgba(17,19,24,.06); }
+.review-card--selected { border-color: #f57c00; box-shadow: inset 4px 0 0 #f57c00, 0 5px 18px rgba(245,124,0,.12); }
 .review-card > .status, .review-card__heading > .status { flex: 0 0 auto; border-radius: 999px; padding: 5px 9px; font-size: 11px; }
 .receipt-viewer { display: flex; flex-direction: column; gap: 14px; }
 .receipt-viewer > img { display: block; width: 100%; max-height: 65vh; border-radius: 8px; background: #eef0f2; object-fit: contain; }
@@ -265,8 +266,16 @@ input:disabled { color: #777; background: #eceeef; }
 .receipt-viewer__footer > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .review-card__heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .review-card__selection { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; }
-.review-card__selection label { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid #dfe2e5; border-radius: 6px; background: #fff; cursor: pointer; }
-.review-card__selection input { width: 15px; height: 15px; accent-color: var(--orange); cursor: pointer; }
+.review-card__select { min-height: 28px; border: 1px solid #d9dde1; border-radius: 7px; padding: 0 10px; background: #fff; color: #4e535a; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.review-card__select:hover { border-color: #f3b26d; color: #c96300; background: #fffaf5; }
+.review-card__select--active { border-color: #f57c00; background: #fff0df; color: #bb5900; }
+.reservation-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -7px 0 18px; border-radius: 10px; padding: 10px 12px 10px 16px; background: #16181b; color: #fff; box-shadow: 0 8px 20px rgba(16,18,21,.14); }
+.reservation-bulk-bar strong { font-size: 13px; }
+.reservation-bulk-bar > div { display: flex; align-items: center; gap: 8px; }
+.reservation-bulk-bar__clear, .reservation-bulk-bar__delete { min-height: 32px; border-radius: 7px; padding: 0 11px; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.reservation-bulk-bar__clear { border: 1px solid #3a3e44; background: transparent; color: #c4c8cc; }
+.reservation-bulk-bar__delete { border: 1px solid #c74343; background: #c62828; color: #fff; }
+.reservation-bulk-bar__delete:disabled { cursor: wait; opacity: .65; }
 .review-card__heading > div { min-width: 0; }
 .review-card__heading h3 { margin: 2px 0; font-size: 16px; line-height: 1.35; }
 .review-card__heading p { color: var(--muted); font-size: 11px; }
