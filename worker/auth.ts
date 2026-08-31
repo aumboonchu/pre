@@ -33,6 +33,7 @@ interface SessionRow {
   username: string
   session_version: number
   token_hash: string
+  active_session_token_hash: string | null
 }
 
 const encoder = new TextEncoder()
@@ -113,6 +114,11 @@ export async function login(
 
   const token = createToken()
   const tokenHash = await hashToken(token)
+  // Keep old records until normal expiry cleanup. Deleting them here can race
+  // with another login; this value is the one server-side source of truth.
+  await env.DB.prepare(
+    'UPDATE users SET active_session_token_hash = ?, updated_at = ? WHERE id = ? AND active = 1',
+  ).bind(tokenHash, now, user.id).run()
   await env.DB.prepare(
     'INSERT INTO sessions (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
   ).bind(tokenHash, user.id, user.session_version, now + SESSION_TTL_SECONDS * 1000, now).run()
@@ -142,7 +148,7 @@ export async function requireAuth(
   const now = Date.now()
   const user = await env.DB.prepare(
     `SELECT u.id, u.role, u.branch_code, u.branch_name, u.username,
-            u.session_version, s.token_hash
+            u.session_version, s.token_hash, u.active_session_token_hash
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = 1
@@ -151,6 +157,9 @@ export async function requireAuth(
   ).bind(tokenHash, now).first<SessionRow>()
 
   if (!user) throw new HttpError(401, 'UNAUTHORIZED', 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่')
+  if (user.active_session_token_hash !== tokenHash) {
+    throw new HttpError(401, 'SESSION_REPLACED', 'บัญชีนี้เข้าสู่ระบบจากเครื่องอื่นแล้ว')
+  }
   if (requiredRole && user.role !== requiredRole) {
     throw new HttpError(403, 'FORBIDDEN', 'ไม่มีสิทธิ์ใช้งานส่วนนี้')
   }

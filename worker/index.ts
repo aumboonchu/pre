@@ -136,7 +136,9 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   if (role !== 'branch' && role !== 'admin') {
     throw new HttpError(400, 'VALIDATION_ERROR', 'ประเภทผู้ใช้ไม่ถูกต้อง')
   }
-  const { user, token } = await login(env, identifier, password, role, Date.now())
+  const now = Date.now()
+  const { user, token } = await login(env, identifier, password, role, now)
+  await audit(env, user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
   return json(
     { ok: true, session: sessionPayload(user) },
     { headers: { 'set-cookie': sessionCookie(token, request) } },
@@ -147,7 +149,12 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
   assertSameOrigin(request)
   try {
     const user = await requireAuth(request, env)
-    await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(user.tokenHash).run()
+    await env.DB.batch([
+      env.DB.prepare(
+        'UPDATE users SET active_session_token_hash = NULL WHERE id = ? AND active_session_token_hash = ?',
+      ).bind(user.id, user.tokenHash),
+      env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(user.tokenHash),
+    ])
   } catch (error) {
     if (!(error instanceof HttpError) || error.status !== 401) throw error
   }
@@ -738,7 +745,8 @@ async function handleResetPassword(request: Request, env: Env, branchId: string)
   const now = Date.now()
   const update = await env.DB.prepare(
     `UPDATE users
-     SET password_salt = ?, password_hash = ?, session_version = session_version + 1, updated_at = ?
+     SET password_salt = ?, password_hash = ?, session_version = session_version + 1,
+         active_session_token_hash = NULL, updated_at = ?
      WHERE id = ? AND role = 'branch'`,
   ).bind(DEFAULT_PASSWORD_SALT, DEFAULT_PASSWORD_HASH, now, branchId).run()
   if (update.meta.changes === 0) throw new HttpError(404, 'NOT_FOUND', 'ไม่พบผู้ใช้สาขา')

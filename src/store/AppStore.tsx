@@ -189,12 +189,26 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!REMOTE_MODE || !session) return
+    const validateSession = () => {
+      void api.session().catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) updateSession(null)
+      })
+    }
+    const validateOnVisible = () => {
+      if (document.visibilityState === 'visible') validateSession()
+    }
     const interval = window.setInterval(() => {
       void refreshRemote().catch((error: unknown) => {
         if (error instanceof ApiError && error.status === 401) updateSession(null)
       })
     }, 30_000)
-    return () => window.clearInterval(interval)
+    window.addEventListener('focus', validateSession)
+    document.addEventListener('visibilitychange', validateOnVisible)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', validateSession)
+      document.removeEventListener('visibilitychange', validateOnVisible)
+    }
   }, [refreshRemote, session, updateSession])
 
   const remoteLogin = useCallback(

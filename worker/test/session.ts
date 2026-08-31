@@ -17,6 +17,9 @@ export async function sessionCookieFor(userId: string): Promise<string> {
   if (!user) throw new Error(`Missing test user ${userId}`)
   const now = Date.now()
   await env.DB.prepare(
+    'UPDATE users SET active_session_token_hash = ? WHERE id = ?',
+  ).bind(hash, userId).run()
+  await env.DB.prepare(
     'INSERT INTO sessions (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
   ).bind(hash, userId, user.session_version, now + 60_000, now).run()
   return `${SESSION_COOKIE}=${token}`
