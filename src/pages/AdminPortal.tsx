@@ -450,7 +450,50 @@ export function AdminPortal() {
                 <div className="filter-tabs">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={reservationFilter === status ? 'active' : ''} onClick={() => setReservationFilter(status)}>{status}{status === 'Waiting for Approved' && <b>{waiting}</b>}</button>)}</div>
                 <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
               </div>
-              {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : <section className="review-grid">{filteredReservations.map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <article className="review-card" key={reservation.id}><div className="review-card__receipt"><div><span className={reservation.receipt ? 'receipt-status-icon receipt-status-icon--ready' : 'receipt-status-icon'}>▧</span><strong>{reservation.receipt ? 'แนบใบเสร็จแล้ว' : 'ยังไม่มีใบเสร็จ'}</strong><small>{reservation.receipt?.name ?? 'รออัปโหลดภายใน 72 ชม.'}</small>{reservation.receipt && <button type="button" className="button button--outline" onClick={() => setSelectedReceipt(reservation)}>ดูใบเสร็จ</button>}</div></div><div className="review-card__body"><div className="review-card__heading"><div><span className="eyebrow">{reservation.id}</span><h3>{product ? cleanProductName(product.name) : reservation.productId}</h3><p>{product?.sku}</p></div><StatusBadge status={reservation.status} /></div><dl><div><dt>สาขา</dt><dd>{branch?.name}<small>{branch?.code}</small></dd></div><div><dt>ลูกค้า</dt><dd>{reservation.customerName}<small>{reservation.customerPhone}</small></dd></div><div><dt>วันที่จอง</dt><dd>{dateTime(reservation.createdAt)}</dd></div></dl>{reservation.status === 'Waiting for Approved' && <div className="review-card__actions"><button className="button button--danger" onClick={() => rejectItem(reservation.id)} disabled={!reservation.receipt}>ไม่อนุมัติ</button><button className="button button--success" onClick={() => approveItem(reservation.id)} disabled={!reservation.receipt}>อนุมัติ / ยืนยัน</button></div>}{!reservation.receipt && reservation.status === 'Waiting for Approved' && <p className="review-hint">ยังดำเนินการไม่ได้จนกว่าสาขาจะอัปโหลดใบเสร็จ</p>}</div></article>})}</section>}
+              {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : (
+                <section className="review-grid">
+                  {filteredReservations.map((reservation) => {
+                    const branch = state.branches.find((item) => item.id === reservation.branchId)
+                    const product = state.products.find((item) => item.id === reservation.productId)
+
+                    return (
+                      <article className="review-card" key={reservation.id}>
+                        <div className="review-card__heading">
+                          <div>
+                            <span className="eyebrow">{reservation.id}</span>
+                            <h3>{product ? cleanProductName(product.name) : reservation.productId}</h3>
+                            <p>{product?.sku}</p>
+                          </div>
+                          <StatusBadge status={reservation.status} />
+                        </div>
+
+                        <dl>
+                          <div><dt>สาขา</dt><dd><strong>{branch?.name ?? '—'}</strong><small>· {branch?.code ?? '—'}</small></dd></div>
+                          <div><dt>ลูกค้า</dt><dd><strong>{reservation.customerName}</strong><small>· {reservation.customerPhone}</small></dd></div>
+                          <div><dt>วันที่จอง</dt><dd><strong>{dateTime(reservation.createdAt)}</strong></dd></div>
+                        </dl>
+
+                        <div className={`review-card__receipt-row ${reservation.receipt ? 'review-card__receipt-row--ready' : ''}`}>
+                          <div className="review-card__receipt-summary">
+                            <i aria-hidden="true" />
+                            <strong>{reservation.receipt ? 'แนบใบเสร็จแล้ว' : 'ยังไม่แนบใบเสร็จ'}</strong>
+                            <small title={reservation.receipt?.name}>{reservation.receipt?.name ?? 'รออัปโหลดภายใน 72 ชม.'}</small>
+                          </div>
+                          <div className="review-card__actions">
+                            {reservation.receipt && <button type="button" className="button button--outline" onClick={() => setSelectedReceipt(reservation)}>ดูใบเสร็จ</button>}
+                            {reservation.status === 'Waiting for Approved' && <>
+                              <button className="button button--danger-ghost" onClick={() => rejectItem(reservation.id)} disabled={!reservation.receipt}>ไม่อนุมัติ</button>
+                              <button className="button button--success" onClick={() => approveItem(reservation.id)} disabled={!reservation.receipt}>อนุมัติ</button>
+                            </>}
+                          </div>
+                        </div>
+
+                        {!reservation.receipt && reservation.status === 'Waiting for Approved' && <p className="review-hint">รอใบเสร็จก่อนจึงจะอนุมัติรายการได้</p>}
+                      </article>
+                    )
+                  })}
+                </section>
+              )}
             </>
           )}
 
