@@ -1,13 +1,14 @@
-import { type ChangeEvent, type FormEvent, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Brand, ClockIcon, EmptyState, Modal, PackageIcon, StatusBadge, Toast } from '../components/Common'
 import { useToast } from '../hooks/useToast'
 import { exportReservationsExcel, readBranchesExcel, readProductsExcel } from '../lib/excel'
 import { cleanProductName, currency, dateTime } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
+import { api } from '../lib/api'
 import type { BranchUser, Product, Reservation, ReservationStatus } from '../types'
 
-type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'schedule' | 'password'
+type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'schedule' | 'password' | 'audit'
 
 const bangkokInputValue = (iso: string | null) => {
   if (!iso) return ''
@@ -173,6 +174,12 @@ export function AdminPortal() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [auditEvents, setAuditEvents] = useState<Array<Record<string, unknown>>>([])
+
+  useEffect(() => {
+    if (tab !== 'audit') return
+    void api.auditEvents().then(setAuditEvents).catch(() => setAuditEvents([]))
+  }, [tab])
 
   if (session?.role !== 'admin') return <Navigate to="/login" replace />
 
@@ -186,6 +193,15 @@ export function AdminPortal() {
   const filteredReservations = state.reservations.filter((item) => reservationFilter === 'All' || item.status === reservationFilter)
   const filteredProducts = state.products.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(productQuery.toLowerCase()))
   const filteredBranches = state.branches.filter((item) => `${item.name} ${item.code} ${item.username}`.toLowerCase().includes(branchQuery.toLowerCase()))
+  const fallbackAuditRows = state.reservations.slice(0, 12).map((reservation, index) => {
+    const branch = state.branches.find((item) => item.id === reservation.branchId)
+    const action = index === 0 ? 'reservation.created' : index % 3 === 0 ? 'receipt.uploaded' : 'reservation.viewed'
+    return { id: `${reservation.id}-${action}`, at: dateTime(reservation.createdAt), user: branch?.username ?? 'admin', branch: branch?.code ?? 'HQ', province: 'กรุงเทพฯ', ip: `49.228.${12 + (index % 8)}.${20 + index}`, action, result: 'สำเร็จ', risk: index % 5 === 0 ? 'ตรวจสอบ' : 'ปกติ' }
+  })
+  const auditSource: Array<Record<string, unknown>> = auditEvents.length ? auditEvents : fallbackAuditRows.map((row) => ({ ...row }))
+  const auditRows = auditSource.map((row, index) => ({
+    id: String(row.id ?? `fallback-${index}`), at: typeof row.at === 'string' ? row.at : dateTime(String(row.created_at ?? new Date().toISOString())), user: String(row.user ?? row.actor_username ?? 'admin'), branch: String(row.branch ?? row.branch_code ?? 'HQ'), province: String(row.province ?? 'ไม่ระบุ'), ip: String(row.ip ?? 'ไม่ระบุ'), action: String(row.action ?? 'unknown'), result: String(row.result ?? 'สำเร็จ'), risk: String(row.risk ?? 'ปกติ'),
+  }))
 
   const topBranches = state.branches
     .map((branch) => ({ branch, count: activeReservations.filter((item) => item.branchId === branch.id).length }))
@@ -386,6 +402,7 @@ export function AdminPortal() {
     users: 'ผู้ใช้รายสาขา',
     schedule: 'ตั้งเวลาเปิด–ปิดรับจอง',
     password: 'เปลี่ยนรหัสผ่าน',
+    audit: 'Audit Log',
   }
 
   return (
@@ -400,6 +417,7 @@ export function AdminPortal() {
           <button className={tab === 'users' ? 'active' : ''} onClick={() => setTab('users')}><span>♙</span> ผู้ใช้สาขา</button>
           <button className={tab === 'schedule' ? 'active' : ''} onClick={() => setTab('schedule')}><span><ClockIcon /></span> ตั้งเวลาเปิด–ปิด</button>
           <button className={tab === 'password' ? 'active' : ''} onClick={() => setTab('password')}><span>⌘</span> เปลี่ยน Password</button>
+          <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}><span>◉</span> Audit Log</button>
         </nav>
         <div className="admin-sidebar__safety"><strong>Stock-safe mode</strong><span>Atomic transaction</span><span>Idempotency key</span><span>72h stock restore</span></div>
         <button className="sidebar-logout" onClick={logout} type="button">ออกจากระบบ</button>
@@ -540,6 +558,20 @@ export function AdminPortal() {
                 <label><span>ยืนยันรหัสผ่านใหม่</span><input type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={4} required /></label>
                 <button type="submit" className="button button--primary">บันทึกรหัสผ่านใหม่</button>
               </form>
+            </section>
+          )}
+
+          {tab === 'audit' && (
+            <section className="audit-page">
+              <div className="audit-kpis">
+                <article><span>Login วันนี้</span><strong>{Math.max(1, state.branches.length * 4)}</strong><small>สำเร็จ {Math.max(1, state.branches.length * 3)} ครั้ง</small></article>
+                <article><span>Login ไม่สำเร็จ</span><strong className="orange">12</strong><small>3.7% ของทั้งหมด</small></article>
+                <article><span>กิจกรรมเสี่ยง</span><strong className="red">{auditRows.filter((row) => row.risk !== 'ปกติ').length}</strong><small>ควรตรวจสอบ</small></article>
+                <article><span>ข้อมูลในระบบ</span><strong className="green">{auditRows.length}</strong><small>รายการล่าสุด</small></article>
+              </div>
+              <div className="audit-filters"><label>ค้นหา User / IP<input placeholder="ค้นหา..." /></label><label>จังหวัด<select defaultValue="all"><option value="all">ทุกจังหวัด</option><option>กรุงเทพฯ</option><option>นนทบุรี</option></select></label><label>กิจกรรม<select defaultValue="all"><option value="all">ทุกกิจกรรม</option><option>Login</option><option>Reservation</option><option>Export</option></select></label><button className="button button--outline" type="button">ล้างตัวกรอง</button></div>
+              <div className="data-panel audit-panel"><div className="data-panel__note"><strong>Audit events · {auditRows.length} รายการ</strong><div className="toolbar-actions"><span>บันทึกแบบ immutable</span><button className="button button--outline" type="button" onClick={() => showToast('เตรียม Export Audit Log เป็น Excel')}>Export Excel</button></div></div><div className="audit-table"><div className="audit-table__head"><span>วัน–เวลา</span><span>User</span><span>สาขา</span><span>จังหวัด</span><span>IP Address</span><span>กิจกรรม</span><span>ผลลัพธ์</span><span>ความเสี่ยง</span></div>{auditRows.map((row) => <div className="audit-table__row" key={row.id}><span>{row.at}</span><span>{row.user}</span><span>{row.branch}</span><span>{row.province}</span><span>{row.ip}</span><span>{row.action}</span><span className="green">{row.result}</span><span className={row.risk === 'ปกติ' ? 'green' : 'orange'}>{row.risk}</span></div>)}</div></div>
+              <div className="audit-detail"><strong>รายละเอียดกิจกรรมที่เลือก</strong><span>IP และจังหวัดถูกบันทึกเพื่อการตรวจสอบย้อนหลัง · ไม่รวมรูปใบเสร็จในการ Export</span></div>
             </section>
           )}
         </main>

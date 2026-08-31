@@ -56,6 +56,10 @@ function receiptFile(receipt: Receipt): File {
 }
 
 export const api = {
+  async auditEvents(): Promise<Array<Record<string, unknown>>> {
+    const result = await request<ApiEnvelope & { events: Array<Record<string, unknown>> }>('/api/v1/admin/audit-events')
+    return result.events
+  },
   async branchDirectory(): Promise<BranchDirectoryEntry[]> {
     const result = await request<ApiEnvelope & { branches: BranchDirectoryEntry[] }>(
       '/api/v1/public/branches',

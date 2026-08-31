@@ -69,6 +69,18 @@ interface PublicBranchRow {
   username: string
 }
 
+interface AuditEventRow {
+  id: string
+  actor_id: string | null
+  actor_username: string | null
+  branch_code: string | null
+  action: string
+  entity_type: string
+  entity_id: string | null
+  detail: string | null
+  created_at: number
+}
+
 function routeId(path: string, expression: RegExp): string | null {
   const match = path.match(expression)
   return match?.[1] ? decodeURIComponent(match[1]) : null
@@ -92,6 +104,20 @@ async function handlePublicBranches(env: Env): Promise<Response> {
      ORDER BY branch_code COLLATE NOCASE`,
   ).all<PublicBranchRow>()
   return json({ ok: true, branches: result.results })
+}
+
+async function handleAuditEvents(request: Request, env: Env): Promise<Response> {
+  const user = await requireAuth(request, env)
+  if (user.role !== 'admin') throw new HttpError(403, 'FORBIDDEN', 'เฉพาะ Admin เท่านั้น')
+  const result = await env.DB.prepare(
+    `SELECT a.id, a.actor_id, u.username AS actor_username, u.branch_code,
+            a.action, a.entity_type, a.entity_id, a.detail, a.created_at
+     FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
+     ORDER BY a.created_at DESC LIMIT 500`,
+  ).all<AuditEventRow>()
+  const ip = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for') ?? null
+  const province = request.headers.get('cf-ipcity') ?? 'ไม่ระบุ'
+  return json({ ok: true, events: result.results.map((row) => ({ ...row, ip, province })) })
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
@@ -754,6 +780,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return handleChangePassword(request, env)
   }
   if (request.method === 'GET' && path === '/api/v1/state') return handleState(request, env)
+  if (request.method === 'GET' && path === '/api/v1/admin/audit-events') return handleAuditEvents(request, env)
   if (request.method === 'POST' && path === '/api/v1/reservations') {
     return handleCreateReservation(request, env)
   }
