@@ -36,6 +36,16 @@ const auditDateTime = (value: unknown) => {
   return Number.isNaN(date.getTime()) ? '—' : dateTime(date.toISOString())
 }
 
+const activityDateTime = (iso: string) => {
+  const date = new Date(iso)
+  return {
+    day: new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', timeZone: 'Asia/Bangkok' }).format(date),
+    time: new Intl.DateTimeFormat('th-TH', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Bangkok' }).format(date),
+  }
+}
+
+const activityStatus = (status: ReservationStatus) => status === 'Waiting for Approved' ? 'รออนุมัติ' : status === 'Confirmed' ? 'ยืนยันแล้ว' : 'ยกเลิก'
+
 function ReceiptViewer({ reservation, onClose }: { reservation: Reservation; onClose: () => void }) {
   const receipt = reservation.receipt
   if (!receipt) return null
@@ -164,6 +174,7 @@ export function AdminPortal() {
   const { toast, showToast } = useToast()
   const [tab, setTab] = useState<AdminTab>('overview')
   const [reservationFilter, setReservationFilter] = useState<'All' | ReservationStatus>('Waiting for Approved')
+  const [recentActivityFilter, setRecentActivityFilter] = useState<'All' | ReservationStatus>('All')
   const [productQuery, setProductQuery] = useState('')
   const [branchQuery, setBranchQuery] = useState('')
   const [editingProduct, setEditingProduct] = useState<Product | 'new' | null>(null)
@@ -199,6 +210,9 @@ export function AdminPortal() {
   const remainingStock = state.products.reduce((sum, item) => sum + item.remainingStock, 0)
   const reservedStock = totalStock - remainingStock
   const filteredReservations = state.reservations.filter((item) => reservationFilter === 'All' || item.status === reservationFilter)
+  const recentReservations = state.reservations
+    .filter((item) => recentActivityFilter === 'All' || item.status === recentActivityFilter)
+    .slice(0, 6)
   const filteredProducts = state.products.filter((item) => `${item.name} ${item.sku}`.toLowerCase().includes(productQuery.toLowerCase()))
   const filteredBranches = state.branches.filter((item) => `${item.name} ${item.code} ${item.username}`.toLowerCase().includes(branchQuery.toLowerCase()))
   const fallbackAuditRows = state.reservations.slice(0, 12).map((reservation, index) => {
@@ -488,9 +502,10 @@ export function AdminPortal() {
                     {topBranches.map(({ branch, count }, index) => <div key={branch.id}><span>{branch.code}</span><div><i style={{ width: `${Math.max(5, (count / Math.max(1, topBranches[0]?.count)) * 100)}%` }} /></div><strong>{count}</strong><small>{index + 1}</small></div>)}
                   </div>
                 </article>
-                <article className="panel panel--wide">
-                  <div className="panel__header"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>รายการล่าสุด</h2></div><button className="text-button" onClick={() => setTab('reservations')}>ดูทั้งหมด →</button></div>
-                  {state.reservations.length === 0 ? <EmptyState title="ยังไม่มีรายการ" description="รายการใหม่จากสาขาจะปรากฏที่นี่" /> : <div className="compact-table">{state.reservations.slice(0, 6).map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); return <div key={reservation.id}><span><strong>{reservation.id}</strong><small>{dateTime(reservation.createdAt)}</small></span><span>{branch?.code}<small>{branch?.name}</small></span><span>{product ? cleanProductName(product.name) : reservation.productId}</span><StatusBadge status={reservation.status} /></div>})}</div>}
+                <article className="panel panel--wide recent-activity">
+                  <div className="recent-activity__header"><div><span className="eyebrow">RECENT ACTIVITY</span><h2>รายการล่าสุด</h2><p>{state.reservations.length} รายการในระบบ</p></div></div>
+                  <div className="recent-activity__filters">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={recentActivityFilter === status ? 'active' : ''} onClick={() => setRecentActivityFilter(status)}>{status === 'All' ? 'ทั้งหมด' : activityStatus(status)}</button>)}</div>
+                  {recentReservations.length === 0 ? <EmptyState title="ไม่พบรายการ" description="ลองเลือกตัวกรองสถานะอื่น" /> : <div className="recent-activity__list">{recentReservations.map((reservation) => { const branch = state.branches.find((item) => item.id === reservation.branchId); const product = state.products.find((item) => item.id === reservation.productId); const date = activityDateTime(reservation.createdAt); return <button className="recent-activity__row" key={reservation.id} type="button" onClick={() => { setReservationFilter('All'); setTab('reservations') }}><span className="recent-activity__date"><strong>{date.day}</strong><small>{date.time}</small></span><span className="recent-activity__detail"><strong>{product ? cleanProductName(product.name) : reservation.productId}</strong><small>{reservation.id} · {branch?.code ?? reservation.branchId} {branch?.name ?? ''} · {reservation.customerName}</small></span><span className={`recent-activity__status recent-activity__status--${reservation.status === 'Waiting for Approved' ? 'waiting' : reservation.status === 'Confirmed' ? 'confirmed' : 'cancel'}`}>{activityStatus(reservation.status)}</span></button>})}</div>}
                 </article>
               </section>
               <section className="safeguard-banner"><div><span>⚡</span><div><strong>Race Condition Defenses พร้อมทำงานจริง</strong><p>Database หัก Stock แบบ Atomic และบังคับ Unique Idempotency Key จึงไม่รับจองเกินแม้สาขากดพร้อมกัน</p></div></div><div className="safeguard-tags"><span>Atomic Stock</span><span>Idempotency</span><span>Scheduled Window</span><span>72h Restore</span></div></section>
