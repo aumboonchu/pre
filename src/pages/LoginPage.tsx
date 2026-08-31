@@ -84,7 +84,6 @@ export function LoginPage() {
       <section className="login-story">
         <Brand />
         <div className="login-story__copy">
-          <span className="eyebrow eyebrow--orange">PRE-ORDER OPERATIONS</span>
           <h1>จองได้อย่างมั่นใจ<br />Stock ไม่เกินจริง</h1>
           <p>
             ระบบจองสินค้าล่วงหน้าสำหรับสาขา JIB ทั่วประเทศ พร้อมรายงานภายในเว็บ
@@ -141,7 +140,7 @@ export function LoginPage() {
               />
             </label>
             {error && <p className="form-error">{error}</p>}
-            <button className="button button--primary button--large" type="submit">เข้าสู่ระบบ <span>→</span></button>
+            <button className="button button--primary button--large" type="submit">เข้าสู่ระบบ</button>
           </form>
           {!remoteMode && (
             <div className="demo-credential">
