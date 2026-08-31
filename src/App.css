@@ -337,6 +337,11 @@ input:disabled { color: #777; background: #eceeef; }
 .active-pill, .inactive-pill { display: inline-flex; border-radius: 4px; padding: 4px 6px; background: #e8f5e9; color: var(--green); font-size: 11px; font-style: normal; font-weight: 800; }
 .inactive-pill { background: #ffebee; color: var(--red); }
 .row-actions { display: flex; gap: 12px; }
+.row-actions--user { gap: 8px; align-items: center; white-space: nowrap; }
+.user-action { min-width: 52px; height: 30px; padding: 0 11px; border: 1px solid #dfe3e8; border-radius: 6px; background: #fff; color: #30343a; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease; }
+.user-action:hover { border-color: #aeb5bd; background: #f7f8fa; }
+.user-action--delete { color: #e03535; }
+.user-action--delete:hover { border-color: #f1b8b8; background: #fff6f6; color: #c92d2d; }
 .toolbar-actions--bulk { flex-wrap: wrap; justify-content: flex-end; }
 .audit-page { display: flex; flex-direction: column; gap: 16px; }
 .audit-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; }
