@@ -31,6 +31,11 @@ const bangkokInputToIso = (value: string) => {
   return new Date(`${withSeconds}+07:00`).toISOString()
 }
 
+const auditDateTime = (value: unknown) => {
+  const date = typeof value === 'number' ? new Date(value) : new Date(String(value ?? ''))
+  return Number.isNaN(date.getTime()) ? '—' : dateTime(date.toISOString())
+}
+
 function ReceiptViewer({ reservation, onClose }: { reservation: Reservation; onClose: () => void }) {
   const receipt = reservation.receipt
   if (!receipt) return null
@@ -200,7 +205,7 @@ export function AdminPortal() {
   })
   const auditSource: Array<Record<string, unknown>> = auditEvents.length ? auditEvents : fallbackAuditRows.map((row) => ({ ...row }))
   const auditRows = auditSource.map((row, index) => ({
-    id: String(row.id ?? `fallback-${index}`), at: typeof row.at === 'string' ? row.at : dateTime(String(row.created_at ?? new Date().toISOString())), user: String(row.user ?? row.actor_username ?? 'admin'), branch: String(row.branch ?? row.branch_code ?? 'HQ'), province: String(row.province ?? 'ไม่ระบุ'), ip: String(row.ip ?? 'ไม่ระบุ'), action: String(row.action ?? 'unknown'), result: String(row.result ?? 'สำเร็จ'), risk: String(row.risk ?? 'ปกติ'),
+    id: String(row.id ?? `fallback-${index}`), at: typeof row.at === 'string' ? row.at : auditDateTime(row.created_at), user: String(row.user ?? row.actor_username ?? 'admin'), branch: String(row.branch ?? row.branch_code ?? 'HQ'), province: String(row.province ?? 'ไม่ระบุ'), ip: String(row.ip ?? 'ไม่ระบุ'), action: String(row.action ?? 'unknown'), result: String(row.result ?? 'สำเร็จ'), risk: String(row.risk ?? 'ปกติ'),
   }))
 
   const topBranches = state.branches
