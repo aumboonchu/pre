@@ -129,6 +129,14 @@ export const api = {
     })
   },
 
+  async deleteReservations(reservationIds: string[]): Promise<number> {
+    const result = await request<ApiEnvelope & { count: number }>('/api/v1/admin/reservations/delete', {
+      method: 'POST',
+      body: JSON.stringify({ reservationIds }),
+    })
+    return result.count
+  },
+
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await request('/api/v1/auth/change-password', {
       method: 'POST',

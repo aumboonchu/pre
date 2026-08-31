@@ -264,6 +264,9 @@ input:disabled { color: #777; background: #eceeef; }
 .receipt-viewer__footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .receipt-viewer__footer > span { min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .review-card__heading { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.review-card__selection { display: flex; flex: 0 0 auto; align-items: center; gap: 9px; }
+.review-card__selection label { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid #dfe2e5; border-radius: 6px; background: #fff; cursor: pointer; }
+.review-card__selection input { width: 15px; height: 15px; accent-color: var(--orange); cursor: pointer; }
 .review-card__heading > div { min-width: 0; }
 .review-card__heading h3 { margin: 2px 0; font-size: 16px; line-height: 1.35; }
 .review-card__heading p { color: var(--muted); font-size: 11px; }

@@ -62,6 +62,13 @@ interface ExistingReservationRow {
   id: string
 }
 
+interface ReservationDeleteRow {
+  id: string
+  product_id: string
+  status: 'Waiting for Approved' | 'Confirmed' | 'Cancel'
+  receipt_key: string | null
+}
+
 interface PublicBranchRow {
   id: string
   code: string
@@ -377,6 +384,40 @@ async function handleAdminReservationStatus(
   }
   await audit(env, user.id, `reservation.${status === 'Confirmed' ? 'confirmed' : 'rejected'}`, 'reservation', reservationId, null, now)
   return json({ ok: true })
+}
+
+async function handleDeleteReservations(request: Request, env: Env): Promise<Response> {
+  assertSameOrigin(request)
+  const user = await requireAuth(request, env, 'admin')
+  const data = await readJsonObject(request, 100_000)
+  if (!Array.isArray(data.reservationIds) || data.reservationIds.length === 0 || data.reservationIds.length > 500) {
+    throw new HttpError(400, 'VALIDATION_ERROR', 'กรุณาเลือกรายการจอง 1–500 รายการ')
+  }
+  const ids = [...new Set(data.reservationIds.map((value) => {
+    if (typeof value !== 'string' || !value.trim() || value.length > 100) {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'เลขที่การจองไม่ถูกต้อง')
+    }
+    return value.trim()
+  }))]
+  const found = await env.DB.batch(ids.map((id) => env.DB.prepare(
+    'SELECT id, product_id, status, receipt_key FROM reservations WHERE id = ?',
+  ).bind(id)))
+  const reservations = found
+    .map((result) => result.results[0] as ReservationDeleteRow | undefined)
+    .filter((row): row is ReservationDeleteRow => Boolean(row))
+  if (!reservations.length) return json({ ok: true, count: 0 })
+
+  const now = Date.now()
+  const statements = reservations.flatMap((reservation) => [
+    ...(reservation.status === 'Cancel' ? [] : [env.DB.prepare(
+      'UPDATE products SET remaining_stock = MIN(total_stock, remaining_stock + 1), updated_at = ? WHERE id = ?',
+    ).bind(now, reservation.product_id)]),
+    env.DB.prepare('DELETE FROM reservations WHERE id = ?').bind(reservation.id),
+  ])
+  await env.DB.batch(statements)
+  await Promise.all(reservations.filter((reservation) => reservation.receipt_key).map((reservation) => env.RECEIPTS.delete(reservation.receipt_key!)))
+  await audit(env, user.id, 'reservations.deleted', 'reservation', null, { count: reservations.length, reservationIds: reservations.map((reservation) => reservation.id) }, now)
+  return json({ ok: true, count: reservations.length })
 }
 
 interface ProductInput {
@@ -794,6 +835,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   const adminReservationId = routeId(path, /^\/api\/v1\/admin\/reservations\/([^/]+)\/status$/)
   if (request.method === 'POST' && adminReservationId) {
     return handleAdminReservationStatus(request, env, adminReservationId)
+  }
+  if (request.method === 'POST' && path === '/api/v1/admin/reservations/delete') {
+    return handleDeleteReservations(request, env)
   }
   const productId = routeId(path, /^\/api\/v1\/admin\/products\/([^/]+)$/)
   if (request.method === 'PUT' && productId) return handleUpsertProduct(request, env, productId)

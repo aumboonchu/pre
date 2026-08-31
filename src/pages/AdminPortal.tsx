@@ -151,6 +151,7 @@ export function AdminPortal() {
     logout,
     approve,
     reject,
+    deleteReservations,
     importProducts,
     deleteProducts,
     importBranches,
@@ -171,6 +172,8 @@ export function AdminPortal() {
   const [deletingProducts, setDeletingProducts] = useState(false)
   const [selectedBranchIds, setSelectedBranchIds] = useState<Set<string>>(() => new Set())
   const [deletingBranches, setDeletingBranches] = useState(false)
+  const [selectedReservationIds, setSelectedReservationIds] = useState<Set<string>>(() => new Set())
+  const [deletingReservations, setDeletingReservations] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Reservation | null>(null)
   const [scheduleEnabled, setScheduleEnabled] = useState(state.settings.bookingEnabled)
   const [scheduleOpensAt, setScheduleOpensAt] = useState(() => bangkokInputValue(state.settings.opensAt))
@@ -310,6 +313,31 @@ export function AdminPortal() {
       showToast(caught instanceof Error ? caught.message : 'ลบผู้ใช้สาขาไม่สำเร็จ', 'error')
     } finally {
       setDeletingBranches(false)
+    }
+  }
+
+  const toggleReservation = (reservationId: string, checked: boolean) => {
+    setSelectedReservationIds((current) => {
+      const next = new Set(current)
+      if (checked) next.add(reservationId)
+      else next.delete(reservationId)
+      return next
+    })
+  }
+
+  const deleteSelectedReservations = async () => {
+    const reservationIds = [...selectedReservationIds]
+    if (!reservationIds.length) return
+    if (!window.confirm(`ยืนยันลบรายการจองที่เลือก ${reservationIds.length} รายการ?\n\nรายการจะถูกลบถาวร และ Stock ของรายการที่ยัง Active จะถูกคืน`)) return
+    setDeletingReservations(true)
+    try {
+      const count = await deleteReservations(reservationIds)
+      setSelectedReservationIds(new Set())
+      showToast(`ลบรายการจอง ${count} รายการเรียบร้อย`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'ลบรายการจองไม่สำเร็จ', 'error')
+    } finally {
+      setDeletingReservations(false)
     }
   }
 
@@ -471,7 +499,7 @@ export function AdminPortal() {
             <>
               <div className="section-toolbar">
                 <div className="filter-tabs">{(['All', 'Waiting for Approved', 'Confirmed', 'Cancel'] as const).map((status) => <button key={status} className={reservationFilter === status ? 'active' : ''} onClick={() => setReservationFilter(status)}>{status}{status === 'Waiting for Approved' && <b>{waiting}</b>}</button>)}</div>
-                <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
+                <div className="toolbar-actions"><span>แสดง {filteredReservations.length} รายการ</span><button type="button" className="button button--danger-ghost" disabled={selectedReservationIds.size === 0 || deletingReservations} onClick={() => void deleteSelectedReservations()}>ลบที่เลือก ({selectedReservationIds.size})</button><button type="button" className="button button--outline" onClick={() => void handleReservationExport()}>Export Excel</button></div>
               </div>
               {filteredReservations.length === 0 ? <EmptyState title="ไม่พบรายการจอง" description="ลองเลือกตัวกรองสถานะอื่น" /> : (
                 <section className="review-grid">
@@ -487,7 +515,7 @@ export function AdminPortal() {
                             <h3>{product ? cleanProductName(product.name) : reservation.productId}</h3>
                             <p>{product?.sku}</p>
                           </div>
-                          <StatusBadge status={reservation.status} />
+                          <div className="review-card__selection"><StatusBadge status={reservation.status} /><label title="เลือกรายการนี้"><input type="checkbox" aria-label={`เลือก ${reservation.id}`} checked={selectedReservationIds.has(reservation.id)} onChange={(event) => toggleReservation(reservation.id, event.target.checked)} /></label></div>
                         </div>
 
                         <dl>

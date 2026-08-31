@@ -71,6 +71,7 @@ interface AppStoreValue {
   uploadReceipt: (reservationId: string, receipt: Receipt) => Promise<void>
   approve: (reservationId: string) => Promise<void>
   reject: (reservationId: string) => Promise<void>
+  deleteReservations: (reservationIds: string[]) => Promise<number>
   changePassword: (current: string, next: string) => Promise<boolean>
   resetBranchPassword: (branchId: string) => Promise<void>
   upsertProduct: (product: Product) => Promise<void>
@@ -337,6 +338,29 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [atomic, refreshRemote],
   )
 
+  const deleteReservations = useCallback(
+    async (reservationIds: string[]) => {
+      if (REMOTE_MODE) {
+        const count = await api.deleteReservations(reservationIds)
+        await refreshRemote()
+        return count
+      }
+      return atomic((latest) => {
+        const selected = new Set(reservationIds)
+        const removed = latest.reservations.filter((reservation) => selected.has(reservation.id))
+        const products = latest.products.map((product) => {
+          const restoreCount = removed.filter((reservation) => reservation.productId === product.id && reservation.status !== 'Cancel').length
+          return restoreCount ? { ...product, remainingStock: Math.min(product.totalStock, product.remainingStock + restoreCount) } : product
+        })
+        return {
+          state: { ...latest, products, reservations: latest.reservations.filter((reservation) => !selected.has(reservation.id)) },
+          value: removed.length,
+        }
+      })
+    },
+    [atomic, refreshRemote],
+  )
+
   const changePassword = useCallback(
     async (current: string, next: string) => {
       if (REMOTE_MODE) {
@@ -547,12 +571,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppStoreValue>(
     () => ({
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
-      approve, reject, changePassword, resetBranchPassword, upsertProduct,
+      approve, reject, deleteReservations, changePassword, resetBranchPassword, upsertProduct,
       importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     }),
     [
       state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
-      approve, reject, changePassword, resetBranchPassword, upsertProduct,
+      approve, reject, deleteReservations, changePassword, resetBranchPassword, upsertProduct,
       importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     ],
   )
