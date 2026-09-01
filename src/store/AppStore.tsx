@@ -32,6 +32,7 @@ import type {
 
 const STATE_KEY = 'jib-pre-interest-state-v1'
 const SESSION_KEY = 'jib-pre-interest-session-v1'
+export const SESSION_REPLACED_NOTICE_KEY = 'jib-pre-interest-session-replaced-v1'
 const REMOTE_MODE = import.meta.env.VITE_API_MODE === 'remote'
 let fallbackQueue: Promise<void> = Promise.resolve()
 
@@ -109,6 +110,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const signOutForSessionReplacement = useCallback(() => {
+    try {
+      sessionStorage.setItem(SESSION_REPLACED_NOTICE_KEY, '1')
+    } catch {
+      // The session is still invalidated by the server if browser storage is unavailable.
+    }
+    updateSession(null)
+  }, [updateSession])
+
   const refreshRemote = useCallback(async (): Promise<AppState> => {
     const next = await api.state()
     commit(next)
@@ -158,7 +168,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             if (!(error instanceof ApiError) || error.status !== 401) {
               console.error('Unable to restore the remote session', error)
             }
-            updateSession(null)
+            if (error instanceof ApiError && error.code === 'SESSION_REPLACED') {
+              signOutForSessionReplacement()
+            } else {
+              updateSession(null)
+            }
           }
         } finally {
           if (active) setReady(true)
@@ -185,13 +199,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('storage', sync)
       window.clearInterval(interval)
     }
-  }, [commit, refreshRemote, updateSession])
+  }, [commit, refreshRemote, signOutForSessionReplacement, updateSession])
 
   useEffect(() => {
     if (!REMOTE_MODE || !session) return
     const validateSession = () => {
       void api.session().catch((error: unknown) => {
-        if (error instanceof ApiError && error.status === 401) updateSession(null)
+        if (error instanceof ApiError && error.status === 401) {
+          if (error.code === 'SESSION_REPLACED') signOutForSessionReplacement()
+          else updateSession(null)
+        }
       })
     }
     const validateOnVisible = () => {
@@ -199,7 +216,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }
     const interval = window.setInterval(() => {
       void refreshRemote().catch((error: unknown) => {
-        if (error instanceof ApiError && error.status === 401) updateSession(null)
+        if (error instanceof ApiError && error.status === 401) {
+          if (error.code === 'SESSION_REPLACED') signOutForSessionReplacement()
+          else updateSession(null)
+        }
       })
     }, 30_000)
     window.addEventListener('focus', validateSession)
@@ -209,7 +229,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', validateSession)
       document.removeEventListener('visibilitychange', validateOnVisible)
     }
-  }, [refreshRemote, session, updateSession])
+  }, [refreshRemote, session, signOutForSessionReplacement, updateSession])
 
   useEffect(() => {
     if (!REMOTE_MODE || !session) return
@@ -217,7 +237,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     let retry: number | undefined
     let socket: WebSocket | null = null
 
-    const clearForReplacedSession = () => updateSession(null)
+    const clearForReplacedSession = () => signOutForSessionReplacement()
     const connect = () => {
       if (stopped) return
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -238,7 +258,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           return
         }
         void api.session().catch((error: unknown) => {
-          if (error instanceof ApiError && error.status === 401) clearForReplacedSession()
+          if (error instanceof ApiError && error.status === 401) {
+            if (error.code === 'SESSION_REPLACED') clearForReplacedSession()
+            else updateSession(null)
+          }
         })
         retry = window.setTimeout(connect, 5_000)
       })
@@ -250,7 +273,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       if (retry !== undefined) window.clearTimeout(retry)
       socket?.close(1000, 'SESSION_CLEANUP')
     }
-  }, [session, updateSession])
+  }, [session, signOutForSessionReplacement, updateSession])
 
   const remoteLogin = useCallback(
     async (identifier: string, password: string, role: 'branch' | 'admin'): Promise<boolean> => {

@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Brand } from '../components/Common'
 import { api } from '../lib/api'
-import { useAppStore } from '../store/AppStore'
+import { SESSION_REPLACED_NOTICE_KEY, useAppStore } from '../store/AppStore'
 import type { BranchDirectoryEntry } from '../types'
 
 export function LoginPage() {
@@ -16,6 +16,16 @@ export function LoginPage() {
   const [branchDirectory, setBranchDirectory] = useState<BranchDirectoryEntry[]>(
     remoteMode ? [] : state.branches,
   )
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(SESSION_REPLACED_NOTICE_KEY) !== '1') return
+      sessionStorage.removeItem(SESSION_REPLACED_NOTICE_KEY)
+      setError('บัญชีนี้มีการเข้าสู่ระบบจากเครื่องอื่นแล้ว จึงไม่สามารถใช้งานเครื่องนี้ต่อได้')
+    } catch {
+      // The page can still be used when browser storage is unavailable.
+    }
+  }, [])
 
   useEffect(() => {
     if (!remoteMode) return
