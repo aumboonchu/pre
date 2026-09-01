@@ -64,6 +64,8 @@ const loadSession = (): Session => {
 interface AppStoreValue {
   state: AppState
   session: Session
+  sessionReplacementNotice: boolean
+  dismissSessionReplacementNotice: () => void
   loginBranch: (identifier: string, password: string) => Promise<boolean>
   loginAdmin: (username: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
@@ -91,6 +93,7 @@ const AppStoreContext = createContext<AppStoreValue | null>(null)
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(loadState)
   const [session, setSession] = useState<Session>(loadSession)
+  const [sessionReplacementNotice, setSessionReplacementNotice] = useState(false)
   const [ready, setReady] = useState(!REMOTE_MODE)
   const stateRef = useRef(state)
 
@@ -116,8 +119,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } catch {
       // The session is still invalidated by the server if browser storage is unavailable.
     }
+    setSessionReplacementNotice(true)
     updateSession(null)
   }, [updateSession])
+
+  const dismissSessionReplacementNotice = useCallback(() => {
+    setSessionReplacementNotice(false)
+  }, [])
 
   const refreshRemote = useCallback(async (): Promise<AppState> => {
     const next = await api.state()
@@ -648,12 +656,14 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppStoreValue>(
     () => ({
-      state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
+      state, session, sessionReplacementNotice, dismissSessionReplacementNotice,
+      loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, deleteReservations, changePassword, resetBranchPassword, upsertProduct,
       importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     }),
     [
-      state, session, loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
+      state, session, sessionReplacementNotice, dismissSessionReplacementNotice,
+      loginBranch, loginAdmin, logout, reserve, cancel, uploadReceipt,
       approve, reject, deleteReservations, changePassword, resetBranchPassword, upsertProduct,
       importProducts, deleteProducts, upsertBranch, importBranches, deleteBranches, setBookingOpen, setBookingSchedule, resetDemo,
     ],

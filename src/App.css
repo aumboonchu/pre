@@ -38,6 +38,12 @@ input { width: 100%; min-height: 43px; border: 1px solid #dde0e3; border-radius:
 input:disabled { color: #777; background: #eceeef; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-error { border-radius: 6px; padding: 10px 12px; background: #fff0f0; color: #b32929; font-size: 15px; font-weight: 700; }
+.session-replaced-overlay { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(15,16,18,.62); backdrop-filter: blur(4px); }
+.session-replaced-dialog { width: min(100%, 430px); border: 1px solid #f0c8c8; border-radius: 16px; padding: 31px; background: #fff; color: #292c31; text-align: center; box-shadow: 0 28px 80px rgba(0,0,0,.28); }
+.session-replaced-dialog__icon { display: grid; width: 46px; height: 46px; margin: 0 auto 16px; place-items: center; border-radius: 50%; background: #fff0f0; color: #bf3030; font-size: 27px; font-weight: 900; }
+.session-replaced-dialog h2 { margin: 8px 0 10px; font-size: 27px; }
+.session-replaced-dialog p { margin: 0 0 23px; color: #5d6269; font-size: 16px; line-height: 1.65; }
+.session-replaced-dialog .button { min-width: 150px; }
 .notice { display: flex; flex-direction: column; gap: 3px; border-left: 3px solid #8b9299; border-radius: 5px; padding: 11px 13px; background: #f3f5f6; color: #464a50; font-size: 14px; }
 .notice strong { font-size: 15px; }
 .notice--warning { border-color: var(--orange); background: #fff7ed; color: #7c461b; }
