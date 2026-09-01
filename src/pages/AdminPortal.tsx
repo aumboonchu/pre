@@ -6,7 +6,7 @@ import { exportReservationsExcel, readBranchesExcel, readProductsExcel } from '.
 import { cleanProductName, currency, dateTime } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
 import { api } from '../lib/api'
-import type { BranchUser, Product, Reservation, ReservationStatus } from '../types'
+import type { BranchLoginHistoryEntry, BranchUser, Product, Reservation, ReservationStatus } from '../types'
 
 type AdminTab = 'overview' | 'reservations' | 'products' | 'users' | 'schedule' | 'password' | 'audit'
 
@@ -51,6 +51,36 @@ const presenceDetail = (branch: BranchUser) => {
   if (branch.lastLogoutAt) return `ออกจากระบบล่าสุด ${dateTime(branch.lastLogoutAt)}`
   if (branch.lastSeenAt) return `ใช้งานล่าสุด ${dateTime(branch.lastSeenAt)}`
   return 'ยังไม่มีประวัติการเข้าสู่ระบบ'
+}
+
+const durationLabel = (seconds: number) => {
+  const totalMinutes = Math.max(0, Math.floor(seconds / 60))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours) return `${hours} ชม. ${minutes} นาที`
+  if (minutes) return `${minutes} นาที`
+  return 'น้อยกว่า 1 นาที'
+}
+
+function LoginHistoryModal({
+  branch,
+  history,
+  loading,
+  onClose,
+}: {
+  branch: BranchUser
+  history: BranchLoginHistoryEntry[]
+  loading: boolean
+  onClose: () => void
+}) {
+  return (
+    <Modal title="ประวัติการเข้าสู่ระบบ" onClose={onClose} wide>
+      <div className="login-history-modal">
+        <div className="login-history-modal__branch"><strong>{branch.name}</strong><span>{branch.code} · {branch.username}</span></div>
+        {loading ? <p className="login-history-modal__loading">กำลังโหลดประวัติ…</p> : history.length === 0 ? <EmptyState title="ยังไม่มีประวัติ" description="ข้อมูลจะเริ่มบันทึกตั้งแต่การเข้าสู่ระบบครั้งถัดไป" /> : <div className="login-history-table"><div className="login-history-table__head"><span>เข้าสู่ระบบ</span><span>ออกจากระบบ / ล่าสุด</span><span>ระยะเวลา</span><span>IP / จังหวัด</span><span>Device</span></div>{history.map((entry) => <div className="login-history-table__row" key={entry.id}><span><strong>{dateTime(entry.loginAt)}</strong></span><span><i className={entry.online ? 'online-pill' : 'offline-pill'}><b aria-hidden="true" />{entry.online ? 'Online' : 'Offline'}</i><small>{entry.logoutAt ? dateTime(entry.logoutAt) : `ล่าสุด ${dateTime(entry.lastSeenAt)}`}</small></span><span>{durationLabel(entry.durationSeconds)}</span><span><strong>{entry.ip}</strong><small>{entry.province}</small></span><span>{entry.device}</span></div>)}</div>}
+      </div>
+    </Modal>
+  )
 }
 
 function ReceiptViewer({ reservation, onClose }: { reservation: Reservation; onClose: () => void }) {
@@ -201,6 +231,9 @@ export function AdminPortal() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [auditEvents, setAuditEvents] = useState<Array<Record<string, unknown>>>([])
+  const [historyBranch, setHistoryBranch] = useState<BranchUser | null>(null)
+  const [loginHistory, setLoginHistory] = useState<BranchLoginHistoryEntry[]>([])
+  const [loadingLoginHistory, setLoadingLoginHistory] = useState(false)
 
   useEffect(() => {
     if (tab !== 'audit') return
@@ -261,6 +294,19 @@ export function AdminPortal() {
       showToast(caught instanceof Error ? caught.message : 'นำเข้าไฟล์ไม่สำเร็จ', 'error')
     }
     event.target.value = ''
+  }
+
+  const openLoginHistory = async (branch: BranchUser) => {
+    setHistoryBranch(branch)
+    setLoadingLoginHistory(true)
+    setLoginHistory([])
+    try {
+      setLoginHistory(await api.branchLoginHistory(branch.id))
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'โหลดประวัติการเข้าสู่ระบบไม่สำเร็จ', 'error')
+    } finally {
+      setLoadingLoginHistory(false)
+    }
   }
 
   const toggleProduct = (productId: string, checked: boolean) => {
@@ -582,7 +628,7 @@ export function AdminPortal() {
           {tab === 'users' && (
             <>
               <div className="section-toolbar"><label className="search"><span>⌕</span><input value={branchQuery} onChange={(event) => setBranchQuery(event.target.value)} placeholder="ค้นหาสาขา / Username" /></label><div className="toolbar-actions toolbar-actions--bulk"><button className="button button--danger-ghost" disabled={selectedBranchIds.size === 0 || deletingBranches} onClick={() => void handleDeleteBranches('selected')}>ลบที่เลือก ({selectedBranchIds.size})</button><button className="button button--danger" disabled={state.branches.length === 0 || deletingBranches} onClick={() => void handleDeleteBranches('all')}>ลบทั้งหมด</button><label className="button button--outline">นำเข้า Branch.xlsx<input hidden type="file" accept=".xlsx,.xls" onChange={handleBranchImport} /></label><button className="button button--primary" onClick={() => setEditingBranch('new')}>＋ เพิ่มผู้ใช้</button></div></div>
-              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>จุดสีเขียวคือกำลังใช้งาน · สีแดงคือ Offline พร้อมเวลาออกจากระบบล่าสุด</span></div><div className="data-table data-table--users"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกผู้ใช้สาขาที่แสดงทั้งหมด" checked={filteredBranches.length > 0 && filteredBranches.every((branch) => selectedBranchIds.has(branch.id))} onChange={(event) => toggleVisibleBranches(event.target.checked)} /></span><span>สาขา</span><span>Username</span><span>การเชื่อมต่อ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${branch.code}`} checked={selectedBranchIds.has(branch.id)} onChange={(event) => toggleBranch(branch.id, event.target.checked)} /></span><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span className="branch-presence"><i className={branch.online ? 'online-pill' : 'offline-pill'}><b aria-hidden="true" />{branch.online ? 'Online' : 'Offline'}</i><small>{presenceDetail(branch)}</small></span><span className="row-actions row-actions--user"><button className="user-action" onClick={() => setEditingBranch(branch)}>Edit</button><button className="user-action" onClick={() => void resetPassword(branch)}>Reset</button><button className="user-action user-action--delete" onClick={() => void handleDeleteBranches('selected', [branch.id])}>Delete</button></span></div>)}</div></div>
+              <div className="data-panel"><div className="data-panel__note"><strong>บัญชีผู้ใช้สาขา {state.branches.length} บัญชี</strong><span>จุดสีเขียวคือกำลังใช้งาน · สีแดงคือ Offline พร้อมเวลาออกจากระบบล่าสุด</span></div><div className="data-table data-table--users"><div className="data-table__head"><span className="select-cell"><input type="checkbox" aria-label="เลือกผู้ใช้สาขาที่แสดงทั้งหมด" checked={filteredBranches.length > 0 && filteredBranches.every((branch) => selectedBranchIds.has(branch.id))} onChange={(event) => toggleVisibleBranches(event.target.checked)} /></span><span>สาขา</span><span>Username</span><span>การเชื่อมต่อ</span><span>จัดการ</span></div>{filteredBranches.map((branch) => <div className="data-table__row" key={branch.id}><span className="select-cell"><input type="checkbox" aria-label={`เลือก ${branch.code}`} checked={selectedBranchIds.has(branch.id)} onChange={(event) => toggleBranch(branch.id, event.target.checked)} /></span><span><strong>{branch.name}</strong><small>{branch.code}</small></span><span>{branch.username}</span><span className="branch-presence"><i className={branch.online ? 'online-pill' : 'offline-pill'}><b aria-hidden="true" />{branch.online ? 'Online' : 'Offline'}</i><small>{presenceDetail(branch)}</small><button className="presence-history-link" type="button" onClick={() => void openLoginHistory(branch)}>ดูประวัติการเข้าสู่ระบบ</button></span><span className="row-actions row-actions--user"><button className="user-action" onClick={() => setEditingBranch(branch)}>Edit</button><button className="user-action" onClick={() => void resetPassword(branch)}>Reset</button><button className="user-action user-action--delete" onClick={() => void handleDeleteBranches('selected', [branch.id])}>Delete</button></span></div>)}</div></div>
             </>
           )}
 
@@ -653,6 +699,7 @@ export function AdminPortal() {
           }}
         />
       )}
+      {historyBranch && <LoginHistoryModal branch={historyBranch} history={loginHistory} loading={loadingLoginHistory} onClose={() => setHistoryBranch(null)} />}
       {selectedReceipt && <ReceiptViewer reservation={selectedReceipt} onClose={() => setSelectedReceipt(null)} />}
       {toast && <Toast {...toast} />}
     </div>

@@ -359,6 +359,20 @@ input:disabled { color: #777; background: #eceeef; }
 .online-pill { background: #e8f5e9; color: var(--green); }
 .offline-pill { background: #ffebee; color: var(--red); }
 .online-pill b, .offline-pill b { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.presence-history-link { border: 0; padding: 0; background: transparent; color: #c56c08; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.presence-history-link:hover { color: var(--orange); }
+.login-history-modal { display: flex; flex-direction: column; gap: 14px; }
+.login-history-modal__branch { display: flex; flex-direction: column; gap: 3px; border: 1px solid #e7e9ec; border-radius: 8px; padding: 12px 14px; background: #fafafa; }
+.login-history-modal__branch strong { font-size: 14px; }
+.login-history-modal__branch span, .login-history-modal__loading { color: var(--muted); font-size: 12px; }
+.login-history-modal__loading { padding: 24px 0; text-align: center; }
+.login-history-table { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.login-history-table__head, .login-history-table__row { display: grid; min-width: 760px; grid-template-columns: 1.05fr 1.2fr .72fr 1fr 1fr; gap: 12px; align-items: center; padding: 11px 14px; }
+.login-history-table__head { background: #f2f3f4; color: #747980; font-size: 11px; font-weight: 800; }
+.login-history-table__row { min-height: 64px; border-top: 1px solid #eceeef; color: #3c4045; font-size: 12px; }
+.login-history-table__row > span { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; }
+.login-history-table__row strong, .login-history-table__row small { overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+.login-history-table__row small { color: var(--muted); font-size: 11px; }
 .row-actions { display: flex; gap: 12px; }
 .row-actions--user { gap: 8px; align-items: center; white-space: nowrap; }
 .user-action { min-width: 52px; height: 30px; padding: 0 11px; border: 1px solid #dfe3e8; border-radius: 6px; background: #fff; color: #30343a; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease; }

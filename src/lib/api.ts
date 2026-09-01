@@ -2,6 +2,7 @@ import type {
   AppState,
   BookingScheduleInput,
   BranchDirectoryEntry,
+  BranchLoginHistoryEntry,
   BranchUser,
   Product,
   Receipt,
@@ -196,6 +197,13 @@ export const api = {
     await request(`/api/v1/admin/branches/${encodeURIComponent(branchId)}/reset-password`, {
       method: 'POST',
     })
+  },
+
+  async branchLoginHistory(branchId: string): Promise<BranchLoginHistoryEntry[]> {
+    const result = await request<ApiEnvelope & { history: BranchLoginHistoryEntry[] }>(
+      `/api/v1/admin/branches/${encodeURIComponent(branchId)}/login-history`,
+    )
+    return result.history
   },
 
   async setBookingOpen(bookingOpen: boolean): Promise<void> {

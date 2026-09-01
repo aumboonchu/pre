@@ -14,6 +14,12 @@ export interface AuthUser {
   tokenHash: string
 }
 
+export interface LoginContext {
+  ipAddress: string | null
+  province: string | null
+  device: string
+}
+
 interface UserAuthRow {
   id: string
   role: 'branch' | 'admin'
@@ -98,6 +104,7 @@ export async function login(
   password: string,
   role: 'branch' | 'admin',
   now: number,
+  context?: LoginContext,
 ): Promise<{ user: AuthUser; token: string }> {
   const normalized = identifier.trim()
   const user = await env.DB.prepare(
@@ -114,17 +121,38 @@ export async function login(
 
   const token = createToken()
   const tokenHash = await hashToken(token)
-  // Keep old records until normal expiry cleanup. Deleting them here can race
-  // with another login; this value is the one server-side source of truth.
-  await env.DB.prepare(
-    `UPDATE users
-     SET active_session_token_hash = ?, last_login_at = ?, last_seen_at = ?, last_logout_at = NULL,
-         updated_at = ?
-     WHERE id = ? AND active = 1`,
-  ).bind(tokenHash, now, now, now, user.id).run()
-  await env.DB.prepare(
-    'INSERT INTO sessions (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
-  ).bind(tokenHash, user.id, user.session_version, now + SESSION_TTL_SECONDS * 1000, now).run()
+  // Keep expired token records for validation, but close their matching history
+  // entry as soon as this account signs in from a new device.
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users
+       SET active_session_token_hash = ?, last_login_at = ?, last_seen_at = ?, last_logout_at = NULL,
+           updated_at = ?
+       WHERE id = ? AND active = 1`,
+    ).bind(tokenHash, now, now, now, user.id),
+    env.DB.prepare(
+      'INSERT INTO sessions (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).bind(tokenHash, user.id, user.session_version, now + SESSION_TTL_SECONDS * 1000, now),
+    env.DB.prepare(
+      `UPDATE login_history
+       SET logout_at = ?, last_seen_at = ?, logout_reason = 'replaced'
+       WHERE user_id = ? AND logout_at IS NULL`,
+    ).bind(now, now, user.id),
+    env.DB.prepare(
+      `INSERT INTO login_history (
+        id, user_id, session_token_hash, login_at, last_seen_at, ip_address, province, device
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      crypto.randomUUID(),
+      user.id,
+      tokenHash,
+      now,
+      now,
+      context?.ipAddress ?? null,
+      context?.province ?? null,
+      context?.device ?? 'ไม่ระบุ',
+    ),
+  ])
 
   return {
     token,

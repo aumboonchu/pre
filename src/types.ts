@@ -23,6 +23,18 @@ export interface BranchUser {
   lastLogoutAt?: string | null
 }
 
+export interface BranchLoginHistoryEntry {
+  id: string
+  loginAt: string
+  lastSeenAt: string
+  logoutAt: string | null
+  durationSeconds: number
+  online: boolean
+  ip: string
+  province: string
+  device: string
+}
+
 export type BranchDirectoryEntry = Pick<BranchUser, 'id' | 'code' | 'name' | 'username'>
 
 export interface Receipt {

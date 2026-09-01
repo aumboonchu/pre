@@ -93,6 +93,16 @@ interface AuditEventRow {
   created_at: number
 }
 
+interface LoginHistoryRow {
+  id: string
+  login_at: number
+  last_seen_at: number
+  logout_at: number | null
+  ip_address: string | null
+  province: string | null
+  device: string
+}
+
 function routeId(path: string, expression: RegExp): string | null {
   const match = path.match(expression)
   return match?.[1] ? decodeURIComponent(match[1]) : null
@@ -121,6 +131,24 @@ function auditLocation(request: Request): AuditLocation {
     // is the most useful province-level signal available at the edge.
     province: city ?? regionCode ?? null,
   }
+}
+
+function loginDevice(request: Request): string {
+  const agent = request.headers.get('user-agent') ?? ''
+  const browser = /Edg\//.test(agent) ? 'Microsoft Edge'
+    : /Firefox\//.test(agent) ? 'Firefox'
+      : /CriOS\//.test(agent) ? 'Chrome'
+        : /Chrome\//.test(agent) ? 'Chrome'
+          : /Safari\//.test(agent) ? 'Safari'
+            : 'Browser ไม่ระบุ'
+  const platform = /iPad/.test(agent) ? 'iPad'
+    : /iPhone/.test(agent) ? 'iPhone'
+      : /Android/.test(agent) ? 'Android'
+        : /Windows/.test(agent) ? 'Windows'
+          : /Macintosh/.test(agent) ? 'macOS'
+            : /Linux/.test(agent) ? 'Linux'
+              : 'อุปกรณ์ไม่ระบุ'
+  return `${browser} · ${platform}`
 }
 
 async function handlePublicBranches(env: Env): Promise<Response> {
@@ -152,6 +180,38 @@ async function handleAuditEvents(request: Request, env: Env): Promise<Response> 
   })
 }
 
+async function handleBranchLoginHistory(request: Request, env: Env, branchId: string): Promise<Response> {
+  const user = await requireAuth(request, env, 'admin')
+  const result = await env.DB.prepare(
+    `SELECT h.id, h.login_at, h.last_seen_at, h.logout_at, h.ip_address, h.province, h.device
+     FROM login_history h
+     JOIN users u ON u.id = h.user_id
+     WHERE h.user_id = ? AND u.role = 'branch'
+     ORDER BY h.login_at DESC
+     LIMIT 100`,
+  ).bind(branchId).all<LoginHistoryRow>()
+  const now = Date.now()
+  await audit(env, auditLocation(request), user.id, 'branch.login_history.viewed', 'user', branchId, null, now)
+  return json({
+    ok: true,
+    history: result.results.map((row) => {
+      const online = row.logout_at === null && row.last_seen_at >= now - 120_000
+      const endedAt = online ? now : (row.logout_at ?? row.last_seen_at)
+      return {
+        id: row.id,
+        loginAt: new Date(row.login_at).toISOString(),
+        lastSeenAt: new Date(row.last_seen_at).toISOString(),
+        logoutAt: row.logout_at ? new Date(row.logout_at).toISOString() : null,
+        durationSeconds: Math.max(0, Math.floor((endedAt - row.login_at) / 1000)),
+        online,
+        ip: row.ip_address ?? 'ไม่ระบุ',
+        province: row.province ?? 'ไม่ระบุ',
+        device: row.device,
+      }
+    }),
+  })
+}
+
 async function handleLogin(request: Request, env: Env): Promise<Response> {
   assertSameOrigin(request)
   const data = await readJsonObject(request, 20_000)
@@ -162,7 +222,11 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     throw new HttpError(400, 'VALIDATION_ERROR', 'ประเภทผู้ใช้ไม่ถูกต้อง')
   }
   const now = Date.now()
-  const { user, token } = await login(env, identifier, password, role, now)
+  const location = auditLocation(request)
+  const { user, token } = await login(env, identifier, password, role, now, {
+    ...location,
+    device: loginDevice(request),
+  })
   try {
     const notifier = env.SESSION_NOTIFIER.getByName(`session:${user.id}`) as DurableObjectStub<SessionNotifier>
     await notifier.invalidate()
@@ -171,7 +235,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     // temporarily unavailable. Do not leave a successful login unusable.
     console.error('Unable to notify the replaced session', error)
   }
-  await audit(env, auditLocation(request), user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
+  await audit(env, location, user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
   return json(
     { ok: true, session: sessionPayload(user) },
     { headers: { 'set-cookie': sessionCookie(token, request) } },
@@ -189,6 +253,11 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
          SET active_session_token_hash = NULL, last_seen_at = ?, last_logout_at = ?, updated_at = ?
          WHERE id = ? AND active_session_token_hash = ?`,
       ).bind(now, now, now, user.id, user.tokenHash),
+      env.DB.prepare(
+        `UPDATE login_history
+         SET last_seen_at = ?, logout_at = ?, logout_reason = 'logout'
+         WHERE session_token_hash = ? AND logout_at IS NULL`,
+      ).bind(now, now, user.tokenHash),
       env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(user.tokenHash),
     ])
     await audit(env, auditLocation(request), user.id, 'auth.logout', 'session', user.id, null, now)
@@ -205,10 +274,16 @@ async function handleHeartbeat(request: Request, env: Env): Promise<Response> {
   assertSameOrigin(request)
   const user = await requireAuth(request, env, 'branch')
   const now = Date.now()
-  await env.DB.prepare(
-    `UPDATE users SET last_seen_at = ?, updated_at = ?
-     WHERE id = ? AND active_session_token_hash = ?`,
-  ).bind(now, now, user.id, user.tokenHash).run()
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET last_seen_at = ?, updated_at = ?
+       WHERE id = ? AND active_session_token_hash = ?`,
+    ).bind(now, now, user.id, user.tokenHash),
+    env.DB.prepare(
+      `UPDATE login_history SET last_seen_at = ?
+       WHERE session_token_hash = ? AND logout_at IS NULL`,
+    ).bind(now, user.tokenHash),
+  ])
   return json({ ok: true })
 }
 
@@ -806,6 +881,11 @@ async function handleResetPassword(request: Request, env: Env, branchId: string)
      WHERE id = ? AND role = 'branch'`,
   ).bind(DEFAULT_PASSWORD_SALT, DEFAULT_PASSWORD_HASH, now, now, branchId).run()
   if (update.meta.changes === 0) throw new HttpError(404, 'NOT_FOUND', 'ไม่พบผู้ใช้สาขา')
+  await env.DB.prepare(
+    `UPDATE login_history
+     SET logout_at = ?, last_seen_at = ?, logout_reason = 'password_reset'
+     WHERE user_id = ? AND logout_at IS NULL`,
+  ).bind(now, now, branchId).run()
   await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(branchId).run()
   await audit(env, auditLocation(request), user.id, 'password.reset', 'user', branchId, null, now)
   return json({ ok: true })
@@ -915,6 +995,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   if (request.method === 'POST' && path === '/api/v1/admin/products/delete') {
     return handleDeleteProducts(request, env)
   }
+  const branchHistoryId = routeId(path, /^\/api\/v1\/admin\/branches\/([^/]+)\/login-history$/)
+  if (request.method === 'GET' && branchHistoryId) return handleBranchLoginHistory(request, env, branchHistoryId)
   const branchId = routeId(path, /^\/api\/v1\/admin\/branches\/([^/]+)$/)
   if (request.method === 'PUT' && branchId) return handleUpsertBranch(request, env, branchId)
   if (request.method === 'POST' && path === '/api/v1/admin/branches/import') {
@@ -957,6 +1039,14 @@ export default {
              WHERE s.token_hash = users.active_session_token_hash AND s.expires_at > ?
            )`,
       ).bind(now, now, now).run()
+      await env.DB.prepare(
+        `UPDATE login_history
+         SET logout_at = COALESCE(last_seen_at, ?), logout_reason = 'expired'
+         WHERE logout_at IS NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM sessions s WHERE s.token_hash = login_history.session_token_hash
+           )`,
+      ).bind(now).run()
       console.log(JSON.stringify({
         message: 'scheduled cleanup complete',
         expiredReservations,
