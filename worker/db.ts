@@ -49,6 +49,11 @@ export interface BookingWindow {
   label: string
 }
 
+export interface AuditLocation {
+  ipAddress: string | null
+  province: string | null
+}
+
 function timestamp(value: string | undefined): number | null {
   const parsed = Number(value || 0)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
@@ -175,6 +180,7 @@ export async function getState(env: Env, user: AuthUser): Promise<Record<string,
 
 export async function audit(
   env: Env,
+  location: AuditLocation,
   actorId: string | null,
   action: string,
   entityType: string,
@@ -183,8 +189,9 @@ export async function audit(
   now = Date.now(),
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO audit_events (id, actor_id, action, entity_type, entity_id, detail, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit_events (
+       id, actor_id, action, entity_type, entity_id, detail, ip_address, province, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     crypto.randomUUID(),
     actorId,
@@ -192,6 +199,8 @@ export async function audit(
     entityType,
     entityId,
     detail ? JSON.stringify(detail) : null,
+    location.ipAddress,
+    location.province,
     now,
   ).run()
 }

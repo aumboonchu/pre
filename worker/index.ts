@@ -6,7 +6,7 @@ import {
   sessionCookie,
   verifyPassword,
 } from './auth'
-import { audit, expireReservations, getBookingWindow, getState } from './db'
+import { audit, expireReservations, getBookingWindow, getState, type AuditLocation } from './db'
 import {
   assertSameOrigin,
   errorResponse,
@@ -88,6 +88,8 @@ interface AuditEventRow {
   entity_type: string
   entity_id: string | null
   detail: string | null
+  ip_address: string | null
+  province: string | null
   created_at: number
 }
 
@@ -106,6 +108,21 @@ function sessionPayload(user: Awaited<ReturnType<typeof requireAuth>>): Record<s
     : { role: 'branch', branchId: user.id }
 }
 
+function auditLocation(request: Request): AuditLocation {
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  const ipAddress = request.headers.get('cf-connecting-ip')
+    ?? forwardedFor?.split(',', 1)[0]?.trim()
+    ?? null
+  const city = typeof request.cf?.city === 'string' ? request.cf.city : null
+  const regionCode = typeof request.cf?.regionCode === 'string' ? request.cf.regionCode : null
+  return {
+    ipAddress,
+    // Cloudflare supplies the nearest city for the client IP. In Thailand this
+    // is the most useful province-level signal available at the edge.
+    province: city ?? regionCode ?? null,
+  }
+}
+
 async function handlePublicBranches(env: Env): Promise<Response> {
   const result = await env.DB.prepare(
     `SELECT id, branch_code AS code, branch_name AS name, username
@@ -121,13 +138,18 @@ async function handleAuditEvents(request: Request, env: Env): Promise<Response> 
   if (user.role !== 'admin') throw new HttpError(403, 'FORBIDDEN', 'เฉพาะ Admin เท่านั้น')
   const result = await env.DB.prepare(
     `SELECT a.id, a.actor_id, u.username AS actor_username, u.branch_code,
-            a.action, a.entity_type, a.entity_id, a.detail, a.created_at
+            a.action, a.entity_type, a.entity_id, a.detail, a.ip_address, a.province, a.created_at
      FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
      ORDER BY a.created_at DESC LIMIT 500`,
   ).all<AuditEventRow>()
-  const ip = request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for') ?? null
-  const province = request.headers.get('cf-ipcity') ?? 'ไม่ระบุ'
-  return json({ ok: true, events: result.results.map((row) => ({ ...row, ip, province })) })
+  return json({
+    ok: true,
+    events: result.results.map((row) => ({
+      ...row,
+      ip: row.ip_address ?? 'ไม่ระบุ',
+      province: row.province ?? 'ไม่ระบุ',
+    })),
+  })
 }
 
 async function handleLogin(request: Request, env: Env): Promise<Response> {
@@ -149,7 +171,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     // temporarily unavailable. Do not leave a successful login unusable.
     console.error('Unable to notify the replaced session', error)
   }
-  await audit(env, user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
+  await audit(env, auditLocation(request), user.id, 'auth.login', 'session', user.id, { role: user.role }, now)
   return json(
     { ok: true, session: sessionPayload(user) },
     { headers: { 'set-cookie': sessionCookie(token, request) } },
@@ -205,7 +227,7 @@ async function handleChangePassword(request: Request, env: Env): Promise<Respons
   await env.DB.prepare(
     'UPDATE users SET password_salt = ?, password_hash = ?, updated_at = ? WHERE id = ?',
   ).bind(next.salt, next.hash, now, user.id).run()
-  await audit(env, user.id, 'password.changed', 'user', user.id, null, now)
+  await audit(env, auditLocation(request), user.id, 'password.changed', 'user', user.id, null, now)
   return json({ ok: true })
 }
 
@@ -277,7 +299,7 @@ async function handleCreateReservation(request: Request, env: Env): Promise<Resp
     throw error
   }
 
-  await audit(env, user.id, 'reservation.created', 'reservation', reservationId, { productId }, now)
+  await audit(env, auditLocation(request), user.id, 'reservation.created', 'reservation', reservationId, { productId }, now)
   return json({ ok: true, reservationId, replayed: false }, { status: 201 })
 }
 
@@ -298,7 +320,7 @@ async function handleCancelReservation(request: Request, env: Env, reservationId
   if (result.meta.changes === 0) {
     throw new HttpError(409, 'NOT_CANCELLABLE', 'รายการนี้ถูกยกเลิกแล้วหรือไม่สามารถยกเลิกได้')
   }
-  await audit(env, user.id, 'reservation.cancelled', 'reservation', reservationId, { reason }, now)
+  await audit(env, auditLocation(request), user.id, 'reservation.cancelled', 'reservation', reservationId, { reason }, now)
   return json({ ok: true })
 }
 
@@ -356,7 +378,7 @@ async function handleReceiptUpload(request: Request, env: Env, reservationId: st
   }
 
   if (reservation.receipt_key) await env.RECEIPTS.delete(reservation.receipt_key)
-  await audit(env, user.id, 'receipt.uploaded', 'reservation', reservationId, { type: file.type, size: file.size }, now)
+  await audit(env, auditLocation(request), user.id, 'receipt.uploaded', 'reservation', reservationId, { type: file.type, size: file.size }, now)
   return json({ ok: true })
 }
 
@@ -408,7 +430,7 @@ async function handleAdminReservationStatus(
       ? 'รายการไม่อยู่ในสถานะรอตรวจสอบก่อนอนุมัติ'
       : 'รายการนี้ถูกยกเลิกแล้ว')
   }
-  await audit(env, user.id, `reservation.${status === 'Confirmed' ? 'confirmed' : 'rejected'}`, 'reservation', reservationId, null, now)
+  await audit(env, auditLocation(request), user.id, `reservation.${status === 'Confirmed' ? 'confirmed' : 'rejected'}`, 'reservation', reservationId, null, now)
   return json({ ok: true })
 }
 
@@ -442,7 +464,7 @@ async function handleDeleteReservations(request: Request, env: Env): Promise<Res
   ])
   await env.DB.batch(statements)
   await Promise.all(reservations.filter((reservation) => reservation.receipt_key).map((reservation) => env.RECEIPTS.delete(reservation.receipt_key!)))
-  await audit(env, user.id, 'reservations.deleted', 'reservation', null, { count: reservations.length, reservationIds: reservations.map((reservation) => reservation.id) }, now)
+  await audit(env, auditLocation(request), user.id, 'reservations.deleted', 'reservation', null, { count: reservations.length, reservationIds: reservations.map((reservation) => reservation.id) }, now)
   return json({ ok: true, count: reservations.length })
 }
 
@@ -519,7 +541,7 @@ async function handleUpsertProduct(request: Request, env: Env, productId: string
       now,
     ).run()
   }
-  await audit(env, user.id, 'product.saved', 'product', productId, { totalStock: product.totalStock }, now)
+  await audit(env, auditLocation(request), user.id, 'product.saved', 'product', productId, { totalStock: product.totalStock }, now)
   return json({ ok: true })
 }
 
@@ -556,7 +578,7 @@ async function handleImportProducts(request: Request, env: Env): Promise<Respons
     now,
   ))
   await env.DB.batch(statements)
-  await audit(env, user.id, 'products.imported', 'product', null, { count: products.length }, now)
+  await audit(env, auditLocation(request), user.id, 'products.imported', 'product', null, { count: products.length }, now)
   return json({ ok: true, count: products.length })
 }
 
@@ -611,7 +633,7 @@ async function handleDeleteProducts(request: Request, env: Env): Promise<Respons
       env.DB.prepare('DELETE FROM products WHERE id = ?').bind(productId)
     )))
     const count = deletes.reduce((sum, result) => sum + result.meta.changes, 0)
-    await audit(env, user.id, 'products.deleted', 'product', null, { count, scope }, Date.now())
+    await audit(env, auditLocation(request), user.id, 'products.deleted', 'product', null, { count, scope }, Date.now())
     return json({ ok: true, count })
   } catch (error) {
     if (isSqlError(error, 'FOREIGN KEY constraint failed')) {
@@ -672,7 +694,7 @@ async function handleUpsertBranch(request: Request, env: Env, branchId: string):
   if (branch.id !== branchId) throw new HttpError(400, 'VALIDATION_ERROR', 'รหัสสาขาไม่ตรงกัน')
   const now = Date.now()
   await saveBranches(env, [branch], now)
-  await audit(env, user.id, 'branch.saved', 'user', branchId, { active: branch.active }, now)
+  await audit(env, auditLocation(request), user.id, 'branch.saved', 'user', branchId, { active: branch.active }, now)
   return json({ ok: true })
 }
 
@@ -691,7 +713,7 @@ async function handleImportBranches(request: Request, env: Env): Promise<Respons
   }
   const now = Date.now()
   await saveBranches(env, branches, now)
-  await audit(env, user.id, 'branches.imported', 'user', null, { count: branches.length }, now)
+  await audit(env, auditLocation(request), user.id, 'branches.imported', 'user', null, { count: branches.length }, now)
   return json({ ok: true, count: branches.length })
 }
 
@@ -748,7 +770,7 @@ async function handleDeleteBranches(request: Request, env: Env): Promise<Respons
       env.DB.prepare(`DELETE FROM users WHERE id = ? AND role = 'branch' RETURNING id`).bind(branchId)
     )))
     const count = deletes.reduce((sum, result) => sum + result.results.length, 0)
-    await audit(env, user.id, 'branches.deleted', 'user', null, { count, scope }, Date.now())
+    await audit(env, auditLocation(request), user.id, 'branches.deleted', 'user', null, { count, scope }, Date.now())
     return json({ ok: true, count })
   } catch (error) {
     if (isSqlError(error, 'FOREIGN KEY constraint failed')) {
@@ -770,7 +792,7 @@ async function handleResetPassword(request: Request, env: Env, branchId: string)
   ).bind(DEFAULT_PASSWORD_SALT, DEFAULT_PASSWORD_HASH, now, branchId).run()
   if (update.meta.changes === 0) throw new HttpError(404, 'NOT_FOUND', 'ไม่พบผู้ใช้สาขา')
   await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(branchId).run()
-  await audit(env, user.id, 'password.reset', 'user', branchId, null, now)
+  await audit(env, auditLocation(request), user.id, 'password.reset', 'user', branchId, null, now)
   return json({ ok: true })
 }
 
@@ -821,7 +843,7 @@ async function handleBookingSetting(request: Request, env: Env): Promise<Respons
     )
   }
   await env.DB.batch(statements)
-  await audit(env, user.id, 'booking.setting.changed', 'setting', 'booking_window', {
+  await audit(env, auditLocation(request), user.id, 'booking.setting.changed', 'setting', 'booking_window', {
     enabled,
     ...(hasSchedule ? { opensAt, closesAt, timeZone: 'Asia/Bangkok' } : {}),
   }, now)
