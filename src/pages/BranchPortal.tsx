@@ -75,14 +75,18 @@ function ReservationModal({
     <Modal title="สร้างรายการจอง" onClose={onClose}>
       <form className="form-stack" onSubmit={submit}>
         <div className="selected-product">
-          <div>
-            <strong>{cleanProductName(product.name)}</strong>
-            <span>{product.sku} · {currency(product.price)}</span>
-            <span className={`selected-product__stock ${product.remainingStock > 0 ? 'is-available' : 'is-sold-out'}`}>
-              Stock คงเหลือ {product.remainingStock} เครื่อง
-            </span>
+          <div className="selected-product__top">
+            <div className="selected-product__info">
+              <strong>{cleanProductName(product.name)}</strong>
+              <span className="selected-product__meta"><span>{product.sku}</span><i>·</i><b>{currency(product.price)}</b></span>
+            </div>
+            <span className="quantity-pill">จำนวน 1</span>
           </div>
-          <span className="quantity-pill">จำนวน 1</span>
+          <span className="selected-product__divider" aria-hidden="true" />
+          <div className={`selected-product__availability ${product.remainingStock > 0 ? 'is-available' : 'is-sold-out'}`}>
+            <span><i aria-hidden="true" />{product.remainingStock > 0 ? 'พร้อมจอง' : 'สินค้าหมด'}</span>
+            <b>Stock คงเหลือ {product.remainingStock} เครื่อง</b>
+          </div>
         </div>
         <div className="form-grid">
           <label>

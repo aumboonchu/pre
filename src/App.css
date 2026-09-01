@@ -162,14 +162,21 @@ input:disabled { color: #777; background: #eceeef; }
 .modal__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
 .modal__header h2 { margin-top: 5px; font-size: 23px; }
 .modal__actions { display: flex; justify-content: flex-end; gap: 8px; }
-.selected-product { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; border-radius: 9px; padding: 12px; background: #f4f5f6; }
-.selected-product > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.selected-product strong { font-size: 15px; }
-.selected-product span { color: var(--muted); font-size: 12px; }
-.selected-product .selected-product__stock { font-weight: 700; }
-.selected-product__stock.is-available { color: #238246; }
-.selected-product__stock.is-sold-out { color: #c62828; }
-.quantity-pill { border-radius: 13px; padding: 5px 8px; background: #fff; color: #222 !important; font-weight: 700; }
+.selected-product { display: flex; flex-direction: column; gap: 10px; border-radius: 12px; padding: 14px 16px; background: #f4f5f6; }
+.selected-product__top { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.selected-product__info { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
+.selected-product__info > strong { color: #1e1e1e; font-size: 15px; line-height: 1.4; }
+.selected-product__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.selected-product__meta i { color: #a0a4a9; font-style: normal; }
+.selected-product__meta b { color: #1e1e1e; font-weight: 700; }
+.selected-product__divider { width: 100%; height: 1px; background: #e5e7eb; }
+.selected-product__availability { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #238246; font-size: 12px; font-weight: 700; }
+.selected-product__availability > span { display: inline-flex; align-items: center; gap: 7px; }
+.selected-product__availability > span > i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.selected-product__availability > b { border-radius: 999px; padding: 5px 10px; background: #e8f5e9; color: currentColor; font-weight: 700; white-space: nowrap; }
+.selected-product__availability.is-sold-out { color: #c62828; }
+.selected-product__availability.is-sold-out > b { background: #ffebee; }
+.quantity-pill { flex: 0 0 auto; border: 1px solid #e1e4e7; border-radius: 999px; padding: 6px 10px; background: #fff; color: #1e1e1e; font-size: 12px; font-weight: 700; line-height: 1.35; white-space: nowrap; }
 .upload-box { display: flex; min-height: 105px; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px dashed #c9cdd1; border-radius: 8px; background: #fafafa; cursor: pointer; }
 .upload-box input { display: none; }
 .upload-box__icon { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: #fff0e2; color: var(--orange); }
