@@ -75,7 +75,6 @@ function ReservationModal({
     <Modal title="สร้างรายการจอง" onClose={onClose}>
       <form className="form-stack" onSubmit={submit}>
         <div className="selected-product">
-          <div className="product-glyph">17</div>
           <div>
             <strong>{cleanProductName(product.name)}</strong>
             <span>{product.sku} · {currency(product.price)}</span>
