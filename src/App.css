@@ -337,6 +337,9 @@ input:disabled { color: #777; background: #eceeef; }
 .data-table__row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .data-table__row small { color: #8a8e94; font-size: 11px; }
 .data-table--products .data-table__head, .data-table--products .data-table__row { grid-template-columns: 28px minmax(240px, 2fr) .75fr .65fr .6fr .6fr .7fr .75fr; }
+.data-table--products .data-table__row > span:nth-child(2) { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.data-table--products .data-table__row > span:nth-child(2) strong { line-height: 1.25; }
+.data-table--products .data-table__row > span:nth-child(2) small { line-height: 1.2; }
 .data-table--users .data-table__head, .data-table--users .data-table__row { grid-template-columns: 28px minmax(240px, 2fr) 1fr .8fr 1.5fr; }
 .data-table--users .data-table__row > span:nth-child(2) { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .data-table--users .data-table__row > span:nth-child(2) strong { line-height: 1.25; }
