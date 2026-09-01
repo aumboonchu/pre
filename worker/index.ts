@@ -182,12 +182,16 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
   assertSameOrigin(request)
   try {
     const user = await requireAuth(request, env)
+    const now = Date.now()
     await env.DB.batch([
       env.DB.prepare(
-        'UPDATE users SET active_session_token_hash = NULL WHERE id = ? AND active_session_token_hash = ?',
-      ).bind(user.id, user.tokenHash),
+        `UPDATE users
+         SET active_session_token_hash = NULL, last_seen_at = ?, last_logout_at = ?, updated_at = ?
+         WHERE id = ? AND active_session_token_hash = ?`,
+      ).bind(now, now, now, user.id, user.tokenHash),
       env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(user.tokenHash),
     ])
+    await audit(env, auditLocation(request), user.id, 'auth.logout', 'session', user.id, null, now)
   } catch (error) {
     if (!(error instanceof HttpError) || error.status !== 401) throw error
   }
@@ -195,6 +199,17 @@ async function handleLogout(request: Request, env: Env): Promise<Response> {
     { ok: true },
     { headers: { 'set-cookie': clearSessionCookie(request) } },
   )
+}
+
+async function handleHeartbeat(request: Request, env: Env): Promise<Response> {
+  assertSameOrigin(request)
+  const user = await requireAuth(request, env, 'branch')
+  const now = Date.now()
+  await env.DB.prepare(
+    `UPDATE users SET last_seen_at = ?, updated_at = ?
+     WHERE id = ? AND active_session_token_hash = ?`,
+  ).bind(now, now, user.id, user.tokenHash).run()
+  return json({ ok: true })
 }
 
 async function handleSessionEvents(request: Request, env: Env): Promise<Response> {
@@ -787,9 +802,9 @@ async function handleResetPassword(request: Request, env: Env, branchId: string)
   const update = await env.DB.prepare(
     `UPDATE users
      SET password_salt = ?, password_hash = ?, session_version = session_version + 1,
-         active_session_token_hash = NULL, updated_at = ?
+         active_session_token_hash = NULL, last_seen_at = NULL, last_logout_at = ?, updated_at = ?
      WHERE id = ? AND role = 'branch'`,
-  ).bind(DEFAULT_PASSWORD_SALT, DEFAULT_PASSWORD_HASH, now, branchId).run()
+  ).bind(DEFAULT_PASSWORD_SALT, DEFAULT_PASSWORD_HASH, now, now, branchId).run()
   if (update.meta.changes === 0) throw new HttpError(404, 'NOT_FOUND', 'ไม่พบผู้ใช้สาขา')
   await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(branchId).run()
   await audit(env, auditLocation(request), user.id, 'password.reset', 'user', branchId, null, now)
@@ -862,6 +877,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
   if (request.method === 'POST' && path === '/api/v1/auth/login') return handleLogin(request, env)
   if (request.method === 'POST' && path === '/api/v1/auth/logout') return handleLogout(request, env)
+  if (request.method === 'POST' && path === '/api/v1/auth/heartbeat') return handleHeartbeat(request, env)
   if (request.method === 'GET' && path === '/api/v1/auth/session-events') {
     return handleSessionEvents(request, env)
   }
@@ -930,6 +946,17 @@ export default {
     ctx.waitUntil((async () => {
       const expiredReservations = await expireReservations(env, now)
       const expiredSessions = await env.DB.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now).run()
+      await env.DB.prepare(
+        `UPDATE users
+         SET active_session_token_hash = NULL,
+             last_logout_at = COALESCE(last_seen_at, ?),
+             updated_at = ?
+         WHERE active_session_token_hash IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM sessions s
+             WHERE s.token_hash = users.active_session_token_hash AND s.expires_at > ?
+           )`,
+      ).bind(now, now, now).run()
       console.log(JSON.stringify({
         message: 'scheduled cleanup complete',
         expiredReservations,

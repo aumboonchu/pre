@@ -16,6 +16,10 @@ interface BranchRow {
   branch_name: string
   username: string
   active: number
+  active_session_token_hash: string | null
+  last_login_at: number | null
+  last_seen_at: number | null
+  last_logout_at: number | null
 }
 
 interface ReservationRow {
@@ -103,13 +107,16 @@ export async function expireReservations(env: Env, now: number): Promise<number>
 }
 
 export async function getState(env: Env, user: AuthUser): Promise<Record<string, unknown>> {
+  const now = Date.now()
   const branchQuery = user.role === 'admin'
     ? env.DB.prepare(
-        `SELECT id, branch_code, branch_name, username, active
+        `SELECT id, branch_code, branch_name, username, active, active_session_token_hash,
+                last_login_at, last_seen_at, last_logout_at
          FROM users WHERE role = 'branch' ORDER BY CAST(id AS INTEGER), id`,
       )
     : env.DB.prepare(
-        `SELECT id, branch_code, branch_name, username, active
+        `SELECT id, branch_code, branch_name, username, active, active_session_token_hash,
+                last_login_at, last_seen_at, last_logout_at
          FROM users WHERE id = ? AND role = 'branch'`,
       ).bind(user.id)
   const reservationQuery = user.role === 'admin'
@@ -144,6 +151,12 @@ export async function getState(env: Env, user: AuthUser): Promise<Record<string,
       username: row.username,
       password: '',
       active: row.active === 1,
+      online: row.active === 1
+        && row.active_session_token_hash !== null
+        && (row.last_seen_at ?? 0) >= now - 120_000,
+      lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
+      lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null,
+      lastLogoutAt: row.last_logout_at ? new Date(row.last_logout_at).toISOString() : null,
     })),
     reservations: reservationResult.results.map((row) => ({
       id: row.id,

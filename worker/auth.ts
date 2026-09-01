@@ -117,8 +117,11 @@ export async function login(
   // Keep old records until normal expiry cleanup. Deleting them here can race
   // with another login; this value is the one server-side source of truth.
   await env.DB.prepare(
-    'UPDATE users SET active_session_token_hash = ?, updated_at = ? WHERE id = ? AND active = 1',
-  ).bind(tokenHash, now, user.id).run()
+    `UPDATE users
+     SET active_session_token_hash = ?, last_login_at = ?, last_seen_at = ?, last_logout_at = NULL,
+         updated_at = ?
+     WHERE id = ? AND active = 1`,
+  ).bind(tokenHash, now, now, now, user.id).run()
   await env.DB.prepare(
     'INSERT INTO sessions (token_hash, user_id, session_version, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
   ).bind(tokenHash, user.id, user.session_version, now + SESSION_TTL_SECONDS * 1000, now).run()

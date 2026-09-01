@@ -354,6 +354,11 @@ input:disabled { color: #777; background: #eceeef; }
 .select-cell input { width: 15px; height: 15px; accent-color: var(--orange); cursor: pointer; }
 .active-pill, .inactive-pill { display: inline-flex; border-radius: 4px; padding: 4px 6px; background: #e8f5e9; color: var(--green); font-size: 11px; font-style: normal; font-weight: 800; }
 .inactive-pill { background: #ffebee; color: var(--red); }
+.branch-presence { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.online-pill, .offline-pill { display: inline-flex; align-items: center; gap: 6px; width: fit-content; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-style: normal; font-weight: 800; }
+.online-pill { background: #e8f5e9; color: var(--green); }
+.offline-pill { background: #ffebee; color: var(--red); }
+.online-pill b, .offline-pill b { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .row-actions { display: flex; gap: 12px; }
 .row-actions--user { gap: 8px; align-items: center; white-space: nowrap; }
 .user-action { min-width: 52px; height: 30px; padding: 0 11px; border: 1px solid #dfe3e8; border-radius: 6px; background: #fff; color: #30343a; font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .16s ease, background .16s ease, color .16s ease; }

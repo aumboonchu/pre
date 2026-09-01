@@ -17,6 +17,10 @@ export interface BranchUser {
   username: string
   password: string
   active: boolean
+  online?: boolean
+  lastLoginAt?: string | null
+  lastSeenAt?: string | null
+  lastLogoutAt?: string | null
 }
 
 export type BranchDirectoryEntry = Pick<BranchUser, 'id' | 'code' | 'name' | 'username'>

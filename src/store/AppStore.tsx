@@ -240,6 +240,28 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   }, [refreshRemote, session, signOutForSessionReplacement, updateSession])
 
   useEffect(() => {
+    if (!REMOTE_MODE || session?.role !== 'branch') return
+    const heartbeat = () => {
+      void api.heartbeat().catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          if (error.code === 'SESSION_REPLACED') signOutForSessionReplacement()
+          else updateSession(null)
+        }
+      })
+    }
+    heartbeat()
+    const interval = window.setInterval(heartbeat, 30_000)
+    const refreshOnVisible = () => {
+      if (document.visibilityState === 'visible') heartbeat()
+    }
+    document.addEventListener('visibilitychange', refreshOnVisible)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+    }
+  }, [session, signOutForSessionReplacement, updateSession])
+
+  useEffect(() => {
     if (!REMOTE_MODE || !session) return
     let stopped = false
     let retry: number | undefined

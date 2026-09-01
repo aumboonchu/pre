@@ -84,6 +84,10 @@ export const api = {
     await request('/api/v1/auth/logout', { method: 'POST' })
   },
 
+  async heartbeat(): Promise<void> {
+    await request('/api/v1/auth/heartbeat', { method: 'POST' })
+  },
+
   async state(): Promise<AppState> {
     const result = await request<ApiEnvelope & { state: AppState }>('/api/v1/state')
     return result.state
