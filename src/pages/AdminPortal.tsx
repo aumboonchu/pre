@@ -2,7 +2,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Brand, ClockIcon, EmptyState, Modal, PackageIcon, StatusBadge, Toast } from '../components/Common'
 import { useToast } from '../hooks/useToast'
-import { exportReservationsExcel, readBranchesExcel, readProductsExcel } from '../lib/excel'
+import { exportAuditEventsExcel, exportReservationsExcel, readBranchesExcel, readProductsExcel } from '../lib/excel'
 import { cleanProductName, currency, dateTime } from '../lib/format'
 import { useAppStore } from '../store/AppStore'
 import { api } from '../lib/api'
@@ -471,6 +471,19 @@ export function AdminPortal() {
     }
   }
 
+  const handleAuditExport = async () => {
+    if (auditRows.length === 0) {
+      showToast('ไม่มี Audit Log สำหรับ Export', 'error')
+      return
+    }
+    try {
+      await exportAuditEventsExcel(auditRows)
+      showToast(`Export Audit Log ${auditRows.length} รายการเรียบร้อย`)
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : 'Export Audit Log ไม่สำเร็จ', 'error')
+    }
+  }
+
   const resetPassword = async (branch: BranchUser) => {
     try {
       await resetBranchPassword(branch.id)
@@ -673,7 +686,7 @@ export function AdminPortal() {
                 <article><span>ข้อมูลในระบบ</span><strong className="green">{auditRows.length}</strong><small>รายการล่าสุด</small></article>
               </div>
               <div className="audit-filters"><label>ค้นหา User / IP<input placeholder="ค้นหา..." /></label><label>จังหวัด<select defaultValue="all"><option value="all">ทุกจังหวัด</option><option>กรุงเทพฯ</option><option>นนทบุรี</option></select></label><label>กิจกรรม<select defaultValue="all"><option value="all">ทุกกิจกรรม</option><option>Login</option><option>Reservation</option><option>Export</option></select></label><button className="button button--outline" type="button">ล้างตัวกรอง</button></div>
-              <div className="data-panel audit-panel"><div className="data-panel__note"><strong>Audit events · {auditRows.length} รายการ</strong><div className="toolbar-actions"><span>บันทึกแบบ immutable</span><button className="button button--outline" type="button" onClick={() => showToast('เตรียม Export Audit Log เป็น Excel')}>Export Excel</button></div></div><div className="audit-table"><div className="audit-table__head"><span>วัน–เวลา</span><span>User</span><span>สาขา</span><span>จังหวัด</span><span>IP Address</span><span>กิจกรรม</span><span>ผลลัพธ์</span><span>ความเสี่ยง</span></div>{auditRows.map((row) => <div className="audit-table__row" key={row.id}><span>{row.at}</span><span>{row.user}</span><span>{row.branch}</span><span>{row.province}</span><span>{row.ip}</span><span>{row.action}</span><span className="green">{row.result}</span><span className={row.risk === 'ปกติ' ? 'green' : 'orange'}>{row.risk}</span></div>)}</div></div>
+              <div className="data-panel audit-panel"><div className="data-panel__note"><strong>Audit events · {auditRows.length} รายการ</strong><div className="toolbar-actions"><span>บันทึกแบบ immutable</span><button className="button button--outline" type="button" onClick={() => void handleAuditExport()}>Export Excel</button></div></div><div className="audit-table"><div className="audit-table__head"><span>วัน–เวลา</span><span>User</span><span>สาขา</span><span>จังหวัด</span><span>IP Address</span><span>กิจกรรม</span><span>ผลลัพธ์</span><span>ความเสี่ยง</span></div>{auditRows.map((row) => <div className="audit-table__row" key={row.id}><span>{row.at}</span><span>{row.user}</span><span>{row.branch}</span><span>{row.province}</span><span>{row.ip}</span><span>{row.action}</span><span className="green">{row.result}</span><span className={row.risk === 'ปกติ' ? 'green' : 'orange'}>{row.risk}</span></div>)}</div></div>
               <div className="audit-detail"><strong>รายละเอียดกิจกรรมที่เลือก</strong><span>IP และจังหวัดถูกบันทึกเพื่อการตรวจสอบย้อนหลัง · ไม่รวมรูปใบเสร็จในการ Export</span></div>
             </section>
           )}

@@ -119,3 +119,38 @@ export async function exportReservationsExcel(
     cellDates: true,
   })
 }
+
+export interface AuditExportRow {
+  at: string
+  user: string
+  branch: string
+  province: string
+  ip: string
+  action: string
+  result: string
+  risk: string
+}
+
+export async function exportAuditEventsExcel(rows: AuditExportRow[]): Promise<void> {
+  const XLSX = await import('xlsx')
+  const sheet = XLSX.utils.json_to_sheet(rows.map((row) => ({
+    'วัน–เวลา': row.at,
+    User: row.user,
+    สาขา: row.branch,
+    จังหวัด: row.province,
+    'IP Address': row.ip,
+    กิจกรรม: row.action,
+    ผลลัพธ์: row.result,
+    'ความเสี่ยง': row.risk,
+  })))
+  sheet['!cols'] = [
+    { wch: 22 }, { wch: 18 }, { wch: 16 }, { wch: 18 },
+    { wch: 18 }, { wch: 28 }, { wch: 14 }, { wch: 14 },
+  ]
+  sheet['!autofilter'] = { ref: sheet['!ref'] ?? 'A1:H1' }
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Audit Log')
+  const stamp = new Date().toISOString().slice(0, 10)
+  XLSX.writeFileXLSX(workbook, `audit-log-${stamp}.xlsx`, { compression: true })
+}
