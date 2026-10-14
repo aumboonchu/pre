@@ -558,11 +558,10 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         return count
       }
       const ids = new Set(productIds ?? stateRef.current.products.map((product) => product.id))
-      const inUse = stateRef.current.reservations.find((reservation) => ids.has(reservation.productId))
-      if (inUse) throw new Error(`ลบไม่ได้ เนื่องจาก ${inUse.productId} มีประวัติการจอง`)
       const nextProducts = stateRef.current.products.filter((product) => !ids.has(product.id))
+      const nextReservations = stateRef.current.reservations.filter((reservation) => !ids.has(reservation.productId))
       const count = stateRef.current.products.length - nextProducts.length
-      commit({ ...stateRef.current, products: nextProducts })
+      commit({ ...stateRef.current, products: nextProducts, reservations: nextReservations })
       return count
     },
     [commit, refreshRemote],

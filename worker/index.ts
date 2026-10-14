@@ -51,11 +51,6 @@ interface ExistingProductRow {
   id: string
 }
 
-interface ProductUsageRow {
-  id: string
-  reservation_count: number
-}
-
 interface BranchUsageRow {
   id: string
   reservation_count: number
@@ -69,6 +64,10 @@ interface ReservationDeleteRow {
   id: string
   product_id: string
   status: 'Waiting for Approved' | 'Confirmed' | 'Cancel'
+  receipt_key: string | null
+}
+
+interface ProductReservationDeleteRow {
   receipt_key: string | null
 }
 
@@ -700,37 +699,46 @@ async function handleDeleteProducts(request: Request, env: Env): Promise<Respons
 
   if (productIds.length === 0) return json({ ok: true, count: 0 })
 
-  const usageChecks = await env.DB.batch(productIds.map((productId) => env.DB.prepare(
-    `SELECT p.id, COUNT(r.id) AS reservation_count
-     FROM products p
-     LEFT JOIN reservations r ON r.product_id = p.id
-     WHERE p.id = ?
-     GROUP BY p.id`,
-  ).bind(productId)))
-  const productsInUse = usageChecks
-    .map((result) => result.results[0] as ProductUsageRow | undefined)
-    .filter((row): row is ProductUsageRow => Boolean(row && row.reservation_count > 0))
-  if (productsInUse.length > 0) {
-    throw new HttpError(
-      409,
-      'PRODUCT_IN_USE',
-      `ลบไม่ได้ เนื่องจาก ${productsInUse[0].id} มีประวัติการจอง`,
-    )
+  const productIdChunks = Array.from(
+    { length: Math.ceil(productIds.length / 100) },
+    (_, index) => productIds.slice(index * 100, (index + 1) * 100),
+  )
+  const reservationDeletes = productIdChunks.map((ids) => env.DB.prepare(
+    `DELETE FROM reservations WHERE product_id IN (${ids.map(() => '?').join(', ')}) RETURNING receipt_key`,
+  ).bind(...ids))
+  const productDeletes = productIdChunks.map((ids) => env.DB.prepare(
+    `DELETE FROM products WHERE id IN (${ids.map(() => '?').join(', ')}) RETURNING id`,
+  ).bind(...ids))
+
+  // D1 batches are transactional. Reservations and their products are either
+  // deleted together, or the whole database change is rolled back.
+  const deleteResults = await env.DB.batch([...reservationDeletes, ...productDeletes])
+  const reservationResults = deleteResults.slice(0, reservationDeletes.length)
+  const productResults = deleteResults.slice(reservationDeletes.length)
+  const reservationCount = reservationResults.reduce((sum, result) => sum + result.meta.changes, 0)
+  const count = productResults.reduce((sum, result) => sum + result.meta.changes, 0)
+  const receiptKeys = reservationResults.flatMap((result) => result.results
+    .map((row) => (row as ProductReservationDeleteRow).receipt_key)
+    .filter((key): key is string => Boolean(key)))
+
+  const receiptDeletes = await Promise.allSettled(receiptKeys.map((key) => env.RECEIPTS.delete(key)))
+  const failedReceiptDeletes = receiptDeletes.filter((result) => result.status === 'rejected').length
+  if (failedReceiptDeletes > 0) {
+    console.error(JSON.stringify({
+      event: 'product_receipt_cleanup_failed',
+      failedReceiptDeletes,
+      requestedReceiptDeletes: receiptKeys.length,
+    }))
   }
 
-  try {
-    const deletes = await env.DB.batch(productIds.map((productId) => (
-      env.DB.prepare('DELETE FROM products WHERE id = ?').bind(productId)
-    )))
-    const count = deletes.reduce((sum, result) => sum + result.meta.changes, 0)
-    await audit(env, auditLocation(request), user.id, 'products.deleted', 'product', null, { count, scope }, Date.now())
-    return json({ ok: true, count })
-  } catch (error) {
-    if (isSqlError(error, 'FOREIGN KEY constraint failed')) {
-      throw new HttpError(409, 'PRODUCT_IN_USE', 'ลบไม่ได้ เนื่องจากมีสินค้าในรายการที่ถูกใช้อ้างอิงในการจอง')
-    }
-    throw error
-  }
+  const now = Date.now()
+  await audit(env, auditLocation(request), user.id, 'products.deleted', 'product', null, {
+    count,
+    reservationCount,
+    receiptCount: receiptKeys.length - failedReceiptDeletes,
+    scope,
+  }, now)
+  return json({ ok: true, count, reservationCount })
 }
 
 interface BranchInput {
